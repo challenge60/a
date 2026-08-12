@@ -47,10 +47,13 @@
   .wrap{max-width:640px;margin:0 auto;padding:0 18px;}
   #app{
     flex:1 1 auto;
+    width:100%;
     overflow-y:auto;
+    overflow-x:hidden;
     -webkit-overflow-scrolling:touch;
     overscroll-behavior-y:contain;
     padding-bottom:24px;
+    min-width:0;
   }
 
   /* header */
@@ -156,11 +159,12 @@
   .tag.mode{background:#3a3a3a;color:#fff;}
 
   /* card grid */
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;min-width:0;}
   .tile{
     background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     padding:16px 14px;cursor:pointer;text-align:left;
     display:flex;flex-direction:column;gap:6px;
+    min-width:0;
     transition:transform .12s ease, box-shadow .12s ease;
   }
   .tile:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(15,61,62,0.08);}
@@ -175,7 +179,7 @@
 
   .chip-row{display:flex;flex-wrap:wrap;gap:8px;}
   .chip-row.chip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;}
-  .chip-row.chip-grid .chip{width:100%;box-sizing:border-box;text-align:center;padding:10px 6px;font-size:0.82rem;border-radius:14px;}
+  .chip-row.chip-grid .chip{width:100%;min-width:0;box-sizing:border-box;text-align:center;padding:10px 6px;font-size:0.82rem;border-radius:14px;}
   .chip-row.chip-grid .chip small{font-size:0.68rem;margin-top:1px;}
   /* 연도·회차별: 문항수 표시가 없어서 상하 여백을 더 줄여도 됨 + 더 촘촘하게 */
   .chip-row.chip-grid-year{grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:6px;}
@@ -333,6 +337,8 @@
   }
   .btn.primary{background:var(--teal);border-color:var(--teal);color:#fff;}
   .btn.ghost{background:#fff;border-color:var(--line);color:var(--ink);}
+  .btn.ghost.active{background:var(--teal-soft);border-color:var(--teal);color:var(--teal);}
+  .util-row .btn{font-size:0.78rem;}
   .btn.star{background:var(--amber-soft);border-color:var(--amber-soft);color:#a5641e;}
   .btn.star.active{background:var(--amber);border-color:var(--amber);color:#fff;}
   .btn.speaking{background:var(--teal);border-color:var(--teal);color:#fff;}
@@ -351,7 +357,7 @@
   .kw.hit{background:#d7f0e2;color:#1f7a4d;}
   .kw.miss{background:#f1e3e0;color:#a04a3e;text-decoration:line-through;}
   .tag-chip-row{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;}
-  .tag-chip{display:inline-block;padding:4px 11px;border-radius:99px;font-size:0.78rem;font-weight:600;
+  .tag-chip{display:inline-block;position:relative;padding:4px 11px;border-radius:99px;font-size:0.78rem;font-weight:600;
     background:#eef2f6;color:#3a5169;border:1px solid #d7e0e8;cursor:pointer;}
   .tag-chip:hover,.tag-chip:active{background:var(--teal);color:#fff;border-color:var(--teal);}
   .tag-filter-pill{display:inline-flex;align-items:center;gap:6px;background:var(--teal);color:#fff;
@@ -575,7 +581,7 @@
    이 자리는 "버전 번호"가 아니라 "수정 시각 타임스탬프"를 버전처럼 쓰는 자리다.
    형식: YY.MM.DD.HH.MM (24시간제, 예: 26.08.07.21.05 = 2026년 8월 7일 21시 05분)
    파일을 새로 수정/생성할 때마다 이 값을 그 시점의 타임스탬프로 교체할 것. */
-const APP_VERSION = "26.08.11.18.43";
+const APP_VERSION = "26.08.12.18.37";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1473,7 +1479,7 @@ function renderUnitPicker(){
     const kws = topKeywords("unitMinor", u);
     const shown = kws.slice(0,10);
     const rest = kws.slice(10);
-    const chipHtml = ([t,c])=>`<span class="tag-chip" data-tag="${escapeHtml(t)}" data-unit-tag="${escapeHtml(u)}" data-unit-tag-field="unitMinor">#${escapeHtml(t)}<b>${c}</b></span>`;
+    const chipHtml = ([t,c])=>`<span class="tag-chip" data-tag="${escapeHtml(t)}" data-unit-tag="${escapeHtml(u)}" data-unit-tag-field="unitMinor">#${escapeHtml(t)}<b>${c}</b>${repeatBadgeHtml("tag", `#${t}`)}</span>`;
     return `
     <div class="unit-kw-group" data-unit-group="${escapeHtml(u)}">
       <div class="unit-kw-head">
@@ -1653,8 +1659,11 @@ function renderFreqList(){
       <h3>출제 빈도별로 골라 학습하세요</h3>
       <p style="font-size:0.8rem;color:var(--muted);line-height:1.5;">전체 ${getData().length}문항 중 같은 문제 대표 ${list.length}문항을 출제 횟수별로 모았어요. 1회만 출제된 문제(★)는 최근 출제 순으로 정렬됩니다.</p>
       <div class="chip-row chip-grid chip-grid-freq" style="margin-top:10px;">
-        <button class="chip" data-tier="all">전체<small>${list.length}문항</small></button>
-        ${tierKeys.map(t=>`<button class="chip" data-tier="${t}">${t===5 ? "★★★★★ (5회 이상)" : "★".repeat(t)+" ("+t+"회)"}<small>${tiers[t].length}문항</small></button>`).join("")}
+        <button class="chip" data-tier="all">전체<small>${list.length}문항</small>${repeatBadgeHtml("freq", `전체 ${list.length}문항`)}</button>
+        ${tierKeys.map(t=>{
+          const lbl = (t===5 ? "★★★★★(5회 이상)" : freqStars(t)) + ` · ${tiers[t].length}문항` + (t===1 ? " · 최근순" : "");
+          return `<button class="chip" data-tier="${t}">${t===5 ? "★★★★★ (5회 이상)" : "★".repeat(t)+" ("+t+"회)"}<small>${tiers[t].length}문항</small>${repeatBadgeHtml("freq", lbl)}</button>`;
+        }).join("")}
       </div>
     </div>
     ${cloudEntries.length ? `
@@ -1870,9 +1879,9 @@ function startQueue(list, mode, label, returnView){
   renderCard();
 }
 
-/* ---- 회독수(반복 학습 횟수): 연도별/단원별 세트를 끝까지 정상적으로 다 보면 1 증가 ---- */
+/* ---- 회독수(반복 학습 횟수): 연도별/단원별/빈도순/키워드별 세트를 끝까지 정상적으로 다 보면 1 증가 ---- */
 function recordQueueCompletion(){
-  if(state.mode !== "year" && state.mode !== "unit" && state.mode !== "unitMinor") return;
+  if(!["year","unit","unitMinor","freq","tag"].includes(state.mode)) return;
   if(!store.setRepeats) store.setRepeats = {};
   const key = queueSessionKey(state.mode, state.modeLabel);
   store.setRepeats[key] = (store.setRepeats[key]||0) + 1;
@@ -1906,19 +1915,25 @@ function renderCard(){
   const multiRound = datasetHasMultiRound(allData);
   const dupYears = buildDuplicateIndex(allData)[q.id];
   const mainLabel = yearRoundLabel(q, multiRound);
-  const freqTag = `<span class="tag freq">${mainLabel}</span>`;
-  const dupTag = (dupYears && dupYears.length>1) ? `<span class="tag dup">중복 출제: ${dupYears.join(", ")}</span>` : "";
-  const noTag = q.no ? `<span class="tag">${q.no}번</span>` : "";
-  const ptsTag = q.points ? `<span class="tag pts">${q.points}점</span>` : "";
+  // 연도-회차-문항번호 (배점) 형식으로 한 태그에 합쳐서 표시. 예: 22-2-20 (4)
+  const combinedTag = `<span class="tag freq">${mainLabel}${q.no?`-${q.no}`:""}${q.points?` (${q.points})`:""}</span>`;
   const acc = questionAccuracy(q.id);
   const accTag = acc!==null ? `<span class="tag acc ${acc<50?'low':''}">정답률 ${acc}%</span>` : "";
-  const starTag = q.frequency>1 ? `<span class="tag star-freq">${freqStars(q.frequency)}</span>` : "";
+  // 별점 + 실제 출제 연도-회차 목록(최신순)을 하나의 태그로 합쳐서 표시. 예: ★★★( 22-2,18-1,11-1 )
+  const starDupTag = (dupYears && dupYears.length>1) ? (()=>{
+    const sorted = [...dupYears].sort((a,b)=>{
+      const [ay,ar] = a.split("-").map(Number);
+      const [by,br] = b.split("-").map(Number);
+      if(by!==ay) return by-ay;
+      return (br||1)-(ar||1);
+    });
+    const stars = "★".repeat(Math.min(sorted.length,5));
+    return `<span class="tag star-freq">${stars}( ${sorted.join(",")} )</span>`;
+  })() : "";
   const titleLabel = state.modeLabel ? `${modeTitle(state.mode)} · ${state.modeLabel}` : modeTitle(state.mode);
   const isPractice = state.studyMode === "practice";
   const isVoice = state.studyMode === "voice";
   const modeTag = isVoice ? `<span class="tag mode">🔊 음성학습모드</span>` : (["unit","unitMinor","year","freq"].includes(state.mode) ? `<span class="tag mode">${isPractice ? "📖 연습모드" : "📝 시험모드"}</span>` : "");
-  // 연도별 기출 모드에서는 헤더 제목에 이미 연도·회차가 표시되므로 태그 행에서는 중복 생략
-  const showFreqTag = state.mode !== "year";
   setPageBar(titleLabel, {
     rightHtml: `<button class="pdf-mini" id="pdfBtn" title="현재 세트 PDF로 저장">🖨 PDF</button>`,
     rightId: "pdfBtn",
@@ -1927,29 +1942,26 @@ function renderCard(){
     onBack: ()=>{ saveQueueSession(); setView(state.returnView || (state.mode==="unitMinor" ? "unit" : (["unit","year","freq"].includes(state.mode) ? state.mode : "home"))); }
   });
   app.innerHTML = `
-    <div class="meta-row with-edit">
+    <div class="meta-row">
       <div class="tag-row" style="margin-bottom:0;">
         <select class="tag idx idx-select" id="idxSelect" title="문항 번호를 선택해서 바로 이동">
           ${state.queue.map((_,i)=>`<option value="${i}" ${i===state.idx?'selected':''}>${i+1}/${state.queue.length}</option>`).join("")}
         </select>
         ${modeTag}
-        <span class="tag unit">${q.unitMajor}${q.unitMinor?" · "+q.unitMinor:""}</span>
-        <span class="tag type">${q.type}</span>
-        ${noTag}
-        ${ptsTag}
-        ${showFreqTag ? freqTag : ""}
-        ${starTag}
-        ${dupTag}
+        ${combinedTag}
+        ${starDupTag}
         ${accTag}
       </div>
-      <button class="edit-mini" id="editBtn">✏️ 수정</button>
     </div>
-    ${renderTagChips(q)}
     <div class="card-box" id="cardBox">
       ${renderTextWithImages(q.question, q.images, q.answer)}
       <div id="answerSlot"></div>
       <textarea class="ans-input" id="ansInput" placeholder="여기에 답을 입력해보세요 (생략 가능)"></textarea>
       <div id="gradeSlot"></div>
+      <div class="btn-row util-row">
+        <button class="btn ghost" id="starBtn">☆ 즐겨찾기</button>
+        <button class="btn ghost" id="editBtn">✏️ 수정</button>
+      </div>
       <div class="btn-row">
         <button class="btn ghost" id="prevBtn">← 이전</button>
         <button class="btn primary" id="revealBtn">정답보기</button>
@@ -1974,7 +1986,14 @@ function renderCard(){
   document.getElementById("idxSelect").addEventListener("change", (e)=> goToCard(Number(e.target.value)));
   document.getElementById("revealBtn").addEventListener("click", ()=> revealAnswer(q));
   document.getElementById("editBtn").addEventListener("click", ()=> openEditModal(q.id, ()=> renderCard()));
-  bindTagChips(app);
+  const starBtnEl = document.getElementById("starBtn");
+  const refreshStarBtn = ()=>{
+    const on = !!store.bookmarks[q.id];
+    starBtnEl.classList.toggle("active", on);
+    starBtnEl.textContent = on ? "★ 즐겨찾기됨" : "☆ 즐겨찾기";
+  };
+  refreshStarBtn();
+  starBtnEl.addEventListener("click", ()=>{ toggleBookmark(q.id); refreshStarBtn(); });
   if(isVoice){
     const delayRange = document.getElementById("voiceDelayRange");
     const delayVal = document.getElementById("voiceDelayVal");
@@ -1996,7 +2015,7 @@ function renderCard(){
       if(t.tagName === "IMG"){ openImageZoom(t.src); return; }
       revealAnswer(q);
     },
-    ()=>{ if(state.idx < state.queue.length-1) goToCard(state.idx+1); else { recordQueueCompletion(); saveQueueSession(); snapBack(document.getElementById("cardBox")); alert("이번 세트 학습을 완료했습니다!"); setView("unit"); } },
+    ()=>{ if(state.idx < state.queue.length-1) goToCard(state.idx+1); else { recordQueueCompletion(); saveQueueSession(); snapBack(document.getElementById("cardBox")); alert("이번 세트 학습을 완료했습니다!"); setView(state.returnView || (state.mode==="unitMinor" ? "unit" : (["unit","year","freq"].includes(state.mode) ? state.mode : "home"))); } },
     ()=>{ if(state.idx > 0) goToCard(state.idx-1); else snapBack(document.getElementById("cardBox")); }
   );
   playCardEnterAnimation("cardBox");
@@ -2201,7 +2220,14 @@ function updateVoiceControlsUI(){
 
 function goToCard(newIdx){
   if(newIdx < 0) return;
-  if(newIdx > state.queue.length-1){ recordQueueCompletion(); saveQueueSession(); alert("이번 세트 학습을 완료했습니다!"); setView("unit"); return; }
+  if(newIdx > state.queue.length-1){
+    recordQueueCompletion(); saveQueueSession();
+    alert("이번 세트 학습을 완료했습니다!");
+    // 세트를 어느 메뉴(단원별/연도별/빈도순 등)에서 시작했는지에 따라 그 메뉴로 돌아간다
+    // (이전에는 무조건 단원별로 이동해서, 빈도순 등 다른 메뉴에서 시작한 경우 엉뚱한 화면으로 넘어갔음)
+    setView(state.returnView || (state.mode==="unitMinor" ? "unit" : (["unit","year","freq"].includes(state.mode) ? state.mode : "home")));
+    return;
+  }
   state.idx = newIdx;
   // 카드 전환 시 이전 카드의 스크롤 위치가 남아있으면(예: 긴 문제를 아래로 읽던 중 다음 카드로 넘어갈 때)
   // 내용 영역(#app) 높이가 갑자기 줄어들면서 안드로이드 크롬 등에서 주소창이 순간적으로
@@ -2249,24 +2275,23 @@ function buildDuplicateIndex(data){
 }
 
 function revealAnswer(q){
-  const isBookmarked = !!store.bookmarks[q.id];
   const kwHtml = (q.keywords&&q.keywords.length) ? `<div class="kw-list">핵심 키워드 참고: ${q.keywords.map(k=>`<span class="kw hit">${k}</span>`).join("")}</div>` : "";
   const noteHtml = q.note ? `<div class="note-box">${escapeHtml(q.note)}</div>` : "";
 
   document.getElementById("answerSlot").innerHTML = `
     <div class="answer-reveal qa-box"><span class="qa-label answer">정답</span>${inlineImagesOnly(q.answer, q.images)}</div>
+    ${renderTagChips(q)}
     ${noteHtml}
     ${kwHtml}
   `;
+  bindTagChips(document.getElementById("answerSlot"));
   document.getElementById("gradeSlot").innerHTML = `
     <div class="diff-note">내 답변과 비교해보고 직접 채점해주세요.</div>
     <div class="btn-row">
-      <button class="btn star ${isBookmarked?'active':''}" id="starBtn">${isBookmarked?'★ 즐겨찾기됨':'☆ 즐겨찾기'}</button>
       <button class="btn danger" id="markX">✕ 오답</button>
       <button class="btn success" id="markO">✔ 정답</button>
     </div>
   `;
-  document.getElementById("starBtn").addEventListener("click", ()=>{ toggleBookmark(q.id); revealAnswer(q); });
   document.getElementById("markO").addEventListener("click", ()=> selfGrade(q, true));
   document.getElementById("markX").addEventListener("click", ()=> selfGrade(q, false));
 }
