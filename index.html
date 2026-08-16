@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko"><head><style data-merge-styles="true"></style>
+<html lang="ko"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>건축기사 실기 필답 노트</title>
@@ -545,20 +545,13 @@
 
 
 </style>
-<link rel="manifest" href="blob:https://challenge60.github.io/6f301d0e-3e69-4c87-9e22-3e267e69e6aa"><div id="uuidMachine">c0dfbc3a-1285-417f-aa4c-930ff1324cef</div><style id="tts-highlight-style">
-    tts-sentence.tts-active {
-      background-color: hsla(210, 98%, 50%, 0.65);
-    }
-    tts-sentence.tts-hover {
-      background-color: hsla(210, 98%, 50%, 0.2);
-    }
-  </style></head>
+<link rel="manifest" href="blob:https://challenge60.github.io/d2d38d49-1838-4987-8e14-65de6249d155"></head>
 <body>
 
 <div class="app-shell">
 <header class="top compact">
   <div class="wrap">
-    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 26.08.16.13.38</span></div>
+    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 26.08.15.13.09</span></div>
     <div class="meta-row" id="metaRow" style="display: none;">
       <div class="meta-line" id="headerMeta">총 1792문항 · 2004–2026 기출</div>
       <button type="button" class="install-btn" id="installBtn">📲 앱 설치</button>
@@ -651,9 +644,9 @@
 <nav class="bottom">
   <button data-view="home" class=""><span class="ic">🏠</span><span class="lb">홈</span></button>
   <button data-view="exam" class=""><span class="ic">📝</span><span class="lb">모의고사</span></button>
-  <button data-view="unit" class=""><span class="ic">📚</span><span class="lb">단원별</span></button>
+  <button data-view="unit"><span class="ic">📚</span><span class="lb">단원별</span></button>
   <button data-view="year" class=""><span class="ic">📅</span><span class="lb">연도별</span></button>
-  <button data-view="freq" class=""><span class="ic">🔥</span><span class="lb">빈도별</span></button>
+  <button data-view="freq"><span class="ic">🔥</span><span class="lb">빈도별</span></button>
   <button data-view="wrong"><span class="ic">🔁</span><span class="lb">오답노트</span></button>
   <button data-view="bookmark"><span class="ic">⭐</span><span class="lb">즐겨찾기</span></button>
   <button data-view="about"><span class="ic">💬</span><span class="lb">오픈톡</span></button>
@@ -669,7 +662,7 @@
    [2] 완성본을 내보낼 때 파일명도 반드시 타임스탬프를 포함해야 한다.
        형식: smckwz_건축기사필답노트_YY_MM_DD_HH_MM.html (위 버전 값과 동일한 시각, 언더바 구분)
        두 규칙 다 매번 빠뜨리기 쉬우니 파일을 건드릴 때마다 이 주석부터 확인할 것. */
-const APP_VERSION = "26.08.16.21.56";
+const APP_VERSION = "26.08.16.22.10";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -3018,5 +3011,964 @@ async function buildAndDownloadZipBackup(includeProgress, password){
       }
       html = head + html.slice(bodyClose);
       bodyClose = html.lastIndexOf("</body>");
-      const seed = "<script>try{localStorage.setItem("arch_exam_app_v1","{\"progress\":{},\"wrong\":{},\"bookmarks\":{},\"streak\":{\"last\":null,\"count\":0},\"solvedTotal\":0,\"correctTotal\":0,\"customData\":null,\"edits\":{},\"examConfig\":null,\"session\":{},\"examSession\":null,\"setRepeats\":{}}");}catch(e){}</script>
+      const seed = "<script>try{localStorage.setItem(" + JSON.stringify(LS_KEY) + "," + JSON.stringify(JSON.stringify(newStore)) + ");}catch(e){}<\/script>\n";
+      html = html.slice(0, bodyClose) + seed + html.slice(bodyClose);
+    }
+
+    const cfg = activeExamConfig();
+    const htmlName = (cfg.markText||"exam") + "_실기_필답노트_" + stamp + ".html";
+
+    const zip = new JSZip();
+    zip.file(htmlName, html);
+    const blob = await zip.generateAsync({type:"blob", compression:"DEFLATE", compressionOptions:{level:6}});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = (cfg.markText||"exam") + "_전체백업_" + stamp + ".zip";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast("ZIP 백업이 저장되었습니다");
+  }catch(err){
+    console.error(err);
+    alert("백업 생성 중 문제가 발생했습니다: " + err.message);
+  }
+}
+
+/* ---- 선택한 문제 세트를 PDF로 저장 (인쇄 다이얼로그 이용) ---- */
+function exportListToPDF(list, title, hideAnswer){
+  if(!list || !list.length){ toast("내보낼 문제가 없습니다"); return; }
+  const cfg = activeExamConfig();
+  const bodyHtml = list.map((raw,i)=>{
+    const q = withEdits(raw);
+    const imgSrcs = (q.images||[]).map(fn=> imgSrc(fn));
+    const used = new Set();
+    const inlinePdf = (text)=>{
+      return escapeHtml(text||"").replace(/\{\{img:(\d+)\}\}/g, (m, idxStr)=>{
+        const idx = Number(idxStr);
+        const src = imgSrcs[idx];
+        if(!src) return "";
+        used.add(idx);
+        return `<img src="${src}" style="max-width:100%;margin:6px 0;display:block;">`;
+      });
+    };
+    const questionHtml = inlinePdf(q.question);
+    const answerHtml = inlinePdf(q.answer);
+    // 문제/정답 어디에도 위치가 지정되지 않은 이미지는 문제 아래에 한 번만 표시
+    const leftoverImgs = imgSrcs.map((src,idx)=> (!used.has(idx) && src) ? `<img src="${src}" style="max-width:100%;margin:6px 0;">` : "").join("");
+    // 시험모드 출력은 실제 시험지처럼 정답 없이 문제와 답안 작성 여백만 넣는다
+    const answerBlock = hideAnswer
+      ? `<div style="margin-top:8px;border:1px solid #ccc;border-radius:6px;min-height:70px;"></div>`
+      : `<div style="margin-top:8px;padding:10px;background:#f6f6f6;border-radius:6px;"><b>정답</b><br>${answerHtml}</div>`;
+    return `
+      <div style="page-break-inside:avoid;margin-bottom:22px;border-bottom:1px solid #ddd;padding-bottom:16px;">
+        <div style="font-size:12px;color:#888;margin-bottom:4px;">${q.year}년${q.round?" "+q.round+"회":""} · ${q.unitMajor}${q.points?` · ${q.points}점`:""}</div>
+        <div style="font-weight:700;margin-bottom:6px;">${i+1}. ${questionHtml}</div>
+        ${leftoverImgs}
+        ${answerBlock}
+      </div>`;
+  }).join("");
+  const win = window.open("", "_blank");
+  if(!win){ toast("팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요."); return; }
+  win.document.write(`
+    <!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+    <title>${escapeHtml(cfg.titleText)} - ${escapeHtml(title||"")}</title>
+    <style>
+      body{font-family:-apple-system,'Malgun Gothic',sans-serif;padding:24px;color:#222;}
+      h1{font-size:18px;margin-bottom:4px;}
+      .meta{font-size:12px;color:#888;margin-bottom:20px;}
+      img{max-width:100%;}
+    </style>
+    </head><body>
+    <h1>${escapeHtml(cfg.titleText)}${hideAnswer ? " (시험지)" : ""}</h1>
+    <div class="meta">${escapeHtml(title||"")} · 총 ${list.length}문항 · 출력일 ${todayStr()}</div>
+    ${bodyHtml}
+    </body></html>
+  `);
+  win.document.close();
+  setTimeout(()=>{ win.focus(); win.print(); }, 400);
+}
+
+/* ---- 토스트 알림 (건축기사 앱에서 이식) ---- */
+function toast(msg){
+  let t = document.getElementById("toast");
+  if(!t){
+    t = document.createElement("div");
+    t.id = "toast";
+    t.className = "toast";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(()=> t.classList.remove("show"), 2200);
+}
+
+/* ---- 카드 스와이프 제스처 (건축기사 앱에서 이식) ---- */
+function snapBack(el){
+  el.style.transition = "transform 0.25s ease, opacity 0.25s ease";
+  el.style.transform = "translateX(0) rotate(0)";
+  el.style.opacity = "1";
+}
+
+/* ---- 카드 스와이프/클릭 제스처 (터치+마우스 공용, 책장 넘기기 효과) ---- */
+function attachCardGestures(elId, onTap, onSwipeLeft, onSwipeRight){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  let startX=0, startY=0, dx=0, dy=0;
+  let active=false, horizontalDrag=false, verticalScroll=false, mouseDown=false;
+
+  const begin = (x,y)=>{ startX=x; startY=y; dx=0; dy=0; active=true; horizontalDrag=false; verticalScroll=false; };
+  const move = (x,y)=>{
+    if(!active) return;
+    dx = x-startX; dy = y-startY;
+    if(!horizontalDrag && !verticalScroll){
+      if(Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) horizontalDrag = true;
+      else if(Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) verticalScroll = true;
+    }
+    if(horizontalDrag){
+      el.style.transition = "none";
+      el.style.transform = `translateX(${dx*0.6}px) rotate(${dx*0.025}deg)`;
+      el.style.opacity = String(Math.max(1 - Math.abs(dx)/450, 0.55));
+    }
+  };
+  const end = (e)=>{
+    if(!active) return;
+    active = false;
+    if(verticalScroll) return;
+    if(horizontalDrag){
+      if(Math.abs(dx) > 70){
+        const dir = dx < 0 ? -1 : 1; // -1: 왼쪽으로 넘김(다음), 1: 오른쪽으로 넘김(이전)
+        el.style.transition = "transform 0.22s cubic-bezier(.4,0,.2,1), opacity 0.22s ease";
+        el.style.transform = `translateX(${dir*130}%) rotate(${dir*16}deg)`;
+        el.style.opacity = "0";
+        setTimeout(()=>{ if(dir<0) onSwipeLeft(); else onSwipeRight(); }, 170);
+      } else {
+        snapBack(el);
+      }
+      return;
+    }
+    if(onTap) onTap(e);
+  };
+
+  el.addEventListener("touchstart", e=>{
+    if(e.touches.length!==1) return;
+    begin(e.touches[0].clientX, e.touches[0].clientY);
+  }, {passive:true});
+  el.addEventListener("touchmove", e=>{
+    if(!active || e.touches.length!==1) return;
+    move(e.touches[0].clientX, e.touches[0].clientY);
+    // 가로 드래그로 판정된 순간부터는 브라우저의 세로 탄성(고무줄) 스크롤이
+    // 함께 발생하지 않도록 막는다 — 이 겹침이 하단 네비게이션 바가 출렁이는 원인이었음
+    if(horizontalDrag && e.cancelable) e.preventDefault();
+  }, {passive:false});
+  el.addEventListener("touchend", e=>{
+    const isTouch = e.changedTouches && e.changedTouches[0];
+    const t = isTouch ? e.target : null;
+    // 이미지를 탭했을 때, 터치 후 뒤이어 발생하는 합성(ghost) click 이벤트가
+    // 방금 띄운 확대창(zoom overlay)을 즉시 닫아버리는 것을 방지
+    if(t && t.tagName === "IMG" && e.cancelable) e.preventDefault();
+    end(isTouch ? {target: t} : e);
+  });
+
+  el.addEventListener("mousedown", e=>{
+    if(e.target.closest("button,textarea,input,select,.mini-btn,.edit-image-del")) return;
+    mouseDown = true;
+    begin(e.clientX, e.clientY);
+  });
+  window.addEventListener("mousemove", e=>{
+    if(!mouseDown) return;
+    move(e.clientX, e.clientY);
+  });
+  window.addEventListener("mouseup", e=>{
+    if(!mouseDown) return;
+    mouseDown = false;
+    end(e);
+  });
+}
+
+/* ---- 이미지 확대 보기 (라이트박스) ---- */
+function openImageZoom(src){
+  const overlay = document.createElement("div");
+  overlay.className = "zoom-overlay";
+  overlay.innerHTML = `<img src="${src}" class="zoom-img">`;
+  overlay.addEventListener("click", ()=> overlay.remove());
+  document.body.appendChild(overlay);
+}
+
+/* ---- 카드 등장 애니메이션 (책장 넘기기 느낌) ---- */
+function playCardEnterAnimation(elId){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  el.classList.add("card-enter");
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=> el.classList.remove("card-enter"));
+  });
+}
+
+/* ---- 문제/정답 텍스트에 이미지 삽입 위치({{img:N}}) 반영 렌더링 ---- */
+function inlineImagesOnly(text, images){
+  const safe = escapeHtml(text || "");
+  if(!images || !images.length) return safe;
+  return safe.replace(/\{\{img:(\d+)\}\}/g, (m, idxStr)=>{
+    const idx = Number(idxStr);
+    if(idx<0 || idx>=images.length) return "";
+    const src = imgSrc(images[idx]);
+    return src ? `<img src="${src}" alt="이미지 ${idx+1}" class="q-image inline-img">` : "";
+  });
+}
+function renderTextWithImages(text, images, otherText){
+  const safe = escapeHtml(text || "");
+  if(!images || !images.length){
+    return `<div class="q-text"><span class="qa-label">문제</span>${safe}</div>`;
+  }
+  const used = new Set();
+  // 다른 필드(예: 정답)에 이미 위치가 지정된 이미지는 여기서 다시(중복으로) 보여주지 않는다
+  if(otherText){
+    let m2;
+    const re2 = /\{\{img:(\d+)\}\}/g;
+    while((m2 = re2.exec(otherText)) !== null){ used.add(Number(m2[1])); }
+  }
+  const withInline = safe.replace(/\{\{img:(\d+)\}\}/g, (m, idxStr)=>{
+    const idx = Number(idxStr);
+    if(idx<0 || idx>=images.length) return "";
+    used.add(idx);
+    const src = imgSrc(images[idx]);
+    return src ? `<img src="${src}" alt="이미지 ${idx+1}" class="q-image inline-img">` : "";
+  });
+  // 문제/정답 어디에도 위치가 지정되지 않은 이미지는 기본적으로 문제 쪽에 표시한다 (박스 안쪽에 포함)
+  const remainIdx = images.map((_,idx)=>idx).filter(idx=>!used.has(idx));
+  const tail = remainIdx.length ? renderImages(remainIdx.map(idx=>images[idx])) : "";
+  return `<div class="q-text"><span class="qa-label">문제</span>${withInline}${tail}</div>`;
+}
+
+/* 배포용으로 Base64 인코딩된 데이터 파일을 자동으로 풀어준다 */
+
+function base64ToUtf8(str){
+  return decodeURIComponent(escape(atob(str)));
+}
+function decodeBackupPayload(rawText){
+  const parsed = JSON.parse(rawText);
+  if(parsed && parsed.encoded === true && parsed.format === "base64" && parsed.payload){
+    return JSON.parse(base64ToUtf8(parsed.payload));
+  }
+  return parsed;
+}
+
+/* ---- 전체 목록 (검색/필터) ---- */
+let browseYearSelected = new Set(); // 비어있으면 전체 연도
+let browseUnitSelected = new Set(); // 비어있으면 전체 대단원
+let browseUnitMinorSelected = new Set(); // 비어있으면 전체 소단원 (값이 있으면 대단원 선택보다 우선 적용)
+let browseTagSelected = null; // 특정 키워드 태그로 진입했을 때만 값이 채워짐 (단일 태그)
+let browseSkipReset = false; // 태그 클릭으로 진입할 때 필터 초기화를 건너뛰기 위한 플래그
+let linkModeActive = false;
+let linkSelected = new Set();
+
+/* ---- 주제 키워드(태그) 칩 렌더링: 클릭하면 같은 태그의 문항 목록으로 이동 ---- */
+function renderTagChips(q){
+  if(!q.tags || !q.tags.length) return "";
+  return `<div class="tag-chip-row">${q.tags.map(t=>`<span class="tag-chip" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</span>`).join("")}</div>`;
+}
+function bindTagChips(container){
+  if(!container) return;
+  container.querySelectorAll(".tag-chip[data-tag]").forEach(el=>{
+    el.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      openTagBrowse(el.dataset.tag);
+    });
+  });
+}
+/* ---- 특정 키워드 태그를 가진 문항만 모아 '전체 문제 목록' 화면으로 이동 ---- */
+function openTagBrowse(tag){
+  document.querySelectorAll(".modal-overlay").forEach(o=>o.remove());
+  browseYearSelected = new Set();
+  browseUnitSelected = new Set();
+  browseUnitMinorSelected = new Set();
+  browseTagSelected = tag;
+  browseSkipReset = true;
+  linkModeActive = false;
+  linkSelected = new Set();
+  setView("browse");
+}
+
+/* 연도(·회차) / 단원 선택지 목록을 만든다 */
+function yearOptionsFor(data){
+  const multiRound = datasetHasMultiRound(data);
+  const combos = {};
+  data.forEach(d=>{
+    const key = d.year + "-" + (d.round||1);
+    if(!combos[key]) combos[key] = {value:key, label:`${d.year}년${multiRound?" "+(d.round||1)+"회":""}`, year:d.year, round:d.round||1};
+  });
+  return Object.values(combos).sort((a,b)=> a.year-b.year || a.round-b.round);
+}
+function unitOptionsFor(data){
+  const present = new Set(data.map(d=>d.unitMajor));
+  return unitMajorList().filter(m=>present.has(m)).map(u=>({value:u, label:u}));
+}
+
+/* 연도를 여러 개 선택할 수 있는 팝업 필터 */
+function openBrowseFilterModal(kind){
+  const data = getData();
+  if(kind === "unit"){ openBrowseUnitFilterModal(data); return; }
+  const options = yearOptionsFor(data);
+  const selectedSet = browseYearSelected;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <span class="close-x">✕</span>
+      <h3>연도 선택 (복수 선택 가능)</h3>
+      <p style="font-size:0.78rem;color:var(--muted);margin-top:4px;">아무것도 선택하지 않으면 전체가 표시됩니다.</p>
+      <div class="chip-row" style="margin-top:12px;">
+        <button class="chip ${selectedSet.size===0?'active':''}" data-all="1">전체</button>
+        ${options.map(o=>`<button class="chip ${selectedSet.has(o.value)?'active':''}" data-value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</button>`).join("")}
+      </div>
+      <button class="btn primary" id="filterModalDone" style="margin-top:16px;width:100%;">확인</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); renderBrowseList(); updateFilterPillLabels(); };
+  overlay.querySelector(".close-x").addEventListener("click", close);
+  overlay.querySelector("#filterModalDone").addEventListener("click", close);
+  const allBtn = overlay.querySelector('[data-all="1"]');
+  const optButtons = overlay.querySelectorAll('[data-value]');
+  allBtn.addEventListener("click", ()=>{
+    selectedSet.clear();
+    allBtn.classList.add("active");
+    optButtons.forEach(b=>b.classList.remove("active"));
+  });
+  optButtons.forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const v = b.dataset.value;
+      if(selectedSet.has(v)) selectedSet.delete(v); else selectedSet.add(v);
+      b.classList.toggle("active", selectedSet.has(v));
+      allBtn.classList.toggle("active", selectedSet.size===0);
+    });
+  });
+}
+
+/* 단원 필터: 대단원(복수선택) 또는 소단원(복수선택) 중 하나의 레벨로 선택. 소단원을 하나라도 고르면 그 값이 우선 적용된다. */
+function openBrowseUnitFilterModal(data){
+  const presentMajors = new Set(data.map(d=>d.unitMajor));
+  const presentMinors = new Set(data.map(d=>d.unitMinor).filter(Boolean));
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <span class="close-x">✕</span>
+      <h3>단원 선택 (복수 선택 가능)</h3>
+      <p style="font-size:0.78rem;color:var(--muted);margin-top:4px;">대단원 또는 소단원 중 원하는 단위로 선택하세요. 소단원을 하나라도 선택하면 소단원 기준이 우선 적용됩니다. 아무것도 선택하지 않으면 전체가 표시됩니다.</p>
+      <div class="chip-row" style="margin-top:12px;">
+        <button class="chip ${(browseUnitSelected.size===0 && browseUnitMinorSelected.size===0)?'active':''}" data-all="1">전체</button>
+      </div>
+      <div class="unit-filter-tree" style="margin-top:10px;">
+        ${UNIT_TAXONOMY.filter(g=>presentMajors.has(g.major)).map(g=>`
+          <div class="unit-filter-group">
+            <button class="chip major-chip ${browseUnitSelected.has(g.major)?'active':''}" data-major="${escapeHtml(g.major)}">${escapeHtml(g.major)}</button>
+            <div class="chip-row minor-chip-row">
+              ${g.minors.filter(m=>presentMinors.has(m)).map(m=>`<button class="chip minor-chip ${browseUnitMinorSelected.has(m)?'active':''}" data-minor="${escapeHtml(m)}">${escapeHtml(m)}</button>`).join("")}
+            </div>
+          </div>`).join("")}
+      </div>
+      <button class="btn primary" id="filterModalDone" style="margin-top:16px;width:100%;">확인</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=>{ overlay.remove(); renderBrowseList(); updateFilterPillLabels(); };
+  overlay.querySelector(".close-x").addEventListener("click", close);
+  overlay.querySelector("#filterModalDone").addEventListener("click", close);
+  const allBtn = overlay.querySelector('[data-all="1"]');
+  const majorButtons = overlay.querySelectorAll('[data-major]');
+  const minorButtons = overlay.querySelectorAll('[data-minor]');
+  const refreshAll = ()=> allBtn.classList.toggle("active", browseUnitSelected.size===0 && browseUnitMinorSelected.size===0);
+  allBtn.addEventListener("click", ()=>{
+    browseUnitSelected.clear(); browseUnitMinorSelected.clear();
+    majorButtons.forEach(b=>b.classList.remove("active"));
+    minorButtons.forEach(b=>b.classList.remove("active"));
+    refreshAll();
+  });
+  majorButtons.forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const v = b.dataset.major;
+      if(browseUnitSelected.has(v)) browseUnitSelected.delete(v); else browseUnitSelected.add(v);
+      b.classList.toggle("active", browseUnitSelected.has(v));
+      refreshAll();
+    });
+  });
+  minorButtons.forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const v = b.dataset.minor;
+      if(browseUnitMinorSelected.has(v)) browseUnitMinorSelected.delete(v); else browseUnitMinorSelected.add(v);
+      b.classList.toggle("active", browseUnitMinorSelected.has(v));
+      refreshAll();
+    });
+  });
+}
+/* 필터 버튼에 현재 선택 상태(전체 · N개)를 표시 */
+function updateFilterPillLabels(){
+  const yBtn = document.getElementById("yearFilterPill");
+  const uBtn = document.getElementById("unitFilterPill");
+  if(yBtn) yBtn.textContent = (browseYearSelected.size ? `연도 ${browseYearSelected.size}개` : "연도 전체") + " ▾";
+  if(uBtn){
+    if(browseUnitMinorSelected.size) uBtn.textContent = `소단원 ${browseUnitMinorSelected.size}개 ▾`;
+    else if(browseUnitSelected.size) uBtn.textContent = `대단원 ${browseUnitSelected.size}개 ▾`;
+    else uBtn.textContent = "단원 전체 ▾";
+  }
+}
+
+function renderBrowseView(){
+  if(browseSkipReset){
+    browseSkipReset = false; // 태그 클릭으로 들어온 경우 필터를 유지한다
+  }else{
+    browseYearSelected = new Set();
+    browseUnitSelected = new Set();
+    browseUnitMinorSelected = new Set();
+    browseTagSelected = null;
+  }
+  linkModeActive = false;
+  linkSelected = new Set();
+  setPageBar("전체 문제 목록", {
+    rightHtml: `<button class="pdf-mini" id="linkModeToggleBtn">🔗 연결 모드</button>`,
+    rightId: "linkModeToggleBtn",
+    rightClick: ()=>{
+      linkModeActive = !linkModeActive;
+      linkSelected = new Set();
+      const btn = document.getElementById("linkModeToggleBtn");
+      if(btn){
+        btn.textContent = linkModeActive ? "🔗 연결모드 끄기" : "🔗 연결 모드";
+        btn.classList.toggle("active", linkModeActive);
+      }
+      renderBrowseList();
+    }
+  });
+  app.innerHTML = `
+    ${browseTagSelected ? `<div class="tag-filter-pill" id="tagFilterPill">#${escapeHtml(browseTagSelected)} 키워드로 보는 중 <span class="x" id="tagFilterClear">✕</span></div>` : ""}
+    <input class="search-box" id="searchBox" placeholder="문제 내용/키워드로 검색">
+    <div class="filter-pill-row">
+      <button class="filter-pill" id="yearFilterPill">연도 전체 ▾</button>
+      <button class="filter-pill" id="unitFilterPill">단원 전체 ▾</button>
+    </div>
+    <div class="section-title" id="browseCount"></div>
+    <div id="browseList"></div>
+    <div id="linkModeBar" style="display:none;position:sticky;bottom:0;background:var(--card);padding:10px 4px;border-top:1px solid var(--line);align-items:center;justify-content:space-between;gap:10px;z-index:5;">
+      <span id="linkModeCount" style="font-size:.85rem;color:var(--muted);"></span>
+      <button class="btn" id="linkModeConnectBtn" disabled>🔗 선택 연결</button>
+    </div>
+  `;
+  app.querySelector("#searchBox").addEventListener("input", renderBrowseList);
+  app.querySelector("#linkModeConnectBtn").addEventListener("click", ()=>{
+    if(linkSelected.size<2) return;
+    linkGroup([...linkSelected]);
+    linkSelected = new Set();
+    renderBrowseList();
+  });
+  app.querySelector("#yearFilterPill").addEventListener("click", ()=> openBrowseFilterModal("year"));
+  app.querySelector("#unitFilterPill").addEventListener("click", ()=> openBrowseFilterModal("unit"));
+  const tagClearBtn = app.querySelector("#tagFilterClear");
+  if(tagClearBtn) tagClearBtn.addEventListener("click", ()=>{ browseTagSelected = null; renderBrowseView(); });
+  updateFilterPillLabels();
+  renderBrowseList();
+}
+
+function renderBrowseList(){
+  const kw = (document.getElementById("searchBox").value || "").trim().toLowerCase();
+  const data = getData();
+  const freqMap = questionFrequencyMap(data);
+  const recMap = questionRecencyMap(data);
+  let list = data.slice();
+  if(browseYearSelected.size) list = list.filter(c=> browseYearSelected.has(c.year + "-" + (c.round||1)));
+  if(browseUnitMinorSelected.size) list = list.filter(c=> browseUnitMinorSelected.has(c.unitMinor));
+  else if(browseUnitSelected.size) list = list.filter(c=> browseUnitSelected.has(c.unitMajor));
+  if(browseTagSelected) list = list.filter(c=> (c.tags||[]).includes(browseTagSelected));
+  if(kw) list = list.filter(c=> (c.question+c.answer+(c.note||"")+" "+(c.tags||[]).join(" ")).toLowerCase().includes(kw));
+  // 공통 정렬 기준: 중복 출제빈도 높은 순 → 동일 빈도면 최근 출제 문제 순
+  list.sort((a,b)=>{
+    const fa = freqMap[a.id]||1, fb = freqMap[b.id]||1;
+    if(fb !== fa) return fb - fa;
+    const ra = recMap[a.id]||{year:a.year||0,round:a.round||0}, rb = recMap[b.id]||{year:b.year||0,round:b.round||0};
+    if(rb.year !== ra.year) return rb.year - ra.year;
+    return (rb.round||0) - (ra.round||0);
+  });
+
+  document.getElementById("browseCount").textContent = `${list.length}문항 표시 중`;
+  const container = document.getElementById("browseList");
+  if(!list.length){
+    container.innerHTML = `<div class="empty-state"><div class="emoji">🔍</div>검색 결과가 없습니다.</div>`;
+    updateLinkModeBar();
+    return;
+  }
+  container.innerHTML = list.map(c=>{
+    const st = store.progress[c.id];
+    let pill = `<span class="stat-pill new">미학습</span>`;
+    if(st && st.history && st.history.length){
+      const last = st.history[st.history.length-1];
+      pill = last.score>=75 ? `<span class="stat-pill correct">정답 처리</span>` : `<span class="stat-pill wrong">오답 처리</span>`;
+    }
+    const freq = freqMap[c.id] || 1;
+    const freqPill = `<span class="stat-pill freq">${freqStars(freq)}</span>`;
+    let checkboxHtml = "";
+    if(linkModeActive){
+      const preLinked = getManualLinks(c.id).length > 0;
+      const checked = linkSelected.has(c.id);
+      // 이미 연결된 문항도 체크박스로 선택해 다른 문항과 새로 묶을 수 있도록 하고,
+      // 해제는 별도의 작은 "연결됨" 배지를 눌렀을 때만 확인 후 진행한다.
+      checkboxHtml = `<span class="link-check" title="탭해서 선택">${checked?'✅':'⬜'}${preLinked?` <small data-unlink="${c.id}" title="눌러서 연결 해제">연결됨 ✕</small>`:''}</span>`;
+    }
+    return `
+      <div class="card-list-item ${linkModeActive?'link-mode':''}" data-id="${c.id}">
+        ${checkboxHtml}
+        <div class="row1">
+          <span>${c.year}년${c.round?" "+c.round+"회":""} · ${c.unitMajor}${c.unitMinor ? " · "+c.unitMinor : ""}</span>
+          <span>${freqPill}${pill}</span>
+        </div>
+        <div class="q-preview">${(c.images&&c.images.length) ? "🖼️ " : ""}${escapeHtml(previewText(c.question))}</div>
+        ${renderTagChips(c)}
+      </div>`;
+  }).join("");
+  container.querySelectorAll(".card-list-item").forEach(el=>{
+    el.addEventListener("click", (e)=>{
+      const unlinkTarget = e.target.closest && e.target.closest("[data-unlink]");
+      if(linkModeActive && unlinkTarget){
+        onLinkModeUnlinkTap(unlinkTarget.dataset.unlink);
+        return;
+      }
+      const checkTarget = e.target.closest && e.target.closest(".link-check");
+      if(linkModeActive && checkTarget){
+        onLinkModeCardTap(el.dataset.id);
+        return;
+      }
+      const tagTarget = e.target.closest && e.target.closest(".tag-chip[data-tag]");
+      if(tagTarget){ openTagBrowse(tagTarget.dataset.tag); return; }
+      openCardModal(el.dataset.id);
+    });
+  });
+  updateLinkModeBar();
+}
+
+/* ---- 연결 모드: 카드 탭 처리 (이미 연결된 문항도 선택해 다른 그룹과 새로 묶을 수 있다) ---- */
+function onLinkModeCardTap(id){
+  if(linkSelected.has(id)) linkSelected.delete(id);
+  else linkSelected.add(id);
+  renderBrowseList();
+}
+/* ---- 연결 모드: "연결됨" 배지를 탭했을 때만 그룹 해제 ---- */
+function onLinkModeUnlinkTap(id){
+  if(!confirm("이 문항을 연결된 그룹에서 해제할까요?")) return;
+  clearManualLinks(id);
+  linkSelected.delete(id);
+  renderBrowseList();
+}
+function updateLinkModeBar(){
+  const bar = document.getElementById("linkModeBar");
+  if(!bar) return;
+  if(!linkModeActive){ bar.style.display = "none"; return; }
+  bar.style.display = "flex";
+  const count = linkSelected.size;
+  document.getElementById("linkModeCount").textContent = count>=2 ? `${count}개 선택됨` : "2개 이상 선택하면 연결할 수 있어요";
+  document.getElementById("linkModeConnectBtn").disabled = count<2;
+}
+
+function openCardModal(id){
+  const c = getData().find(d=>d.id===id);
+  if(!c) return;
+  const isBookmarked = !!store.bookmarks[id];
+  const kwHtml = (c.keywords&&c.keywords.length) ? `<div class="kw-list">핵심 키워드 참고: ${c.keywords.map(k=>`<span class="kw hit">${k}</span>`).join("")}</div>` : "";
+  const noteHtml = c.note ? `<div class="note-box">${escapeHtml(c.note)}</div>` : "";
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <span class="close-x">✕</span>
+      <div class="card-head" style="padding-right:24px;">
+        <h3>${c.year}년${c.round?" "+c.round+"회":""} · ${c.unitMajor}${c.unitMinor ? " · "+c.unitMinor : ""}${c.points?` · ${c.points}점`:""}</h3>
+        <button class="edit-mini" id="modalEditBtn">✏️ 수정</button>
+      </div>
+      ${renderTextWithImages(c.question, c.images, c.answer)}
+      <div class="answer-reveal qa-box" style="margin-top:14px;"><span class="qa-label answer">정답</span>${inlineImagesOnly(c.answer, c.images)}</div>
+      ${noteHtml}
+      ${kwHtml}
+      ${renderTagChips(c)}
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn star ${isBookmarked?'active':''}" id="modalStarBtn">${isBookmarked?'★ 즐겨찾기됨':'☆ 즐겨찾기'}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  bindTagChips(overlay);
+  const stopSpeaking = ()=>{ if("speechSynthesis" in window) speechSynthesis.cancel(); };
+  overlay.querySelector(".close-x").addEventListener("click", ()=>{ stopSpeaking(); overlay.remove(); });
+  let mouseDownOnOverlay39 = false;
+  overlay.addEventListener("mousedown", e=>{ mouseDownOnOverlay39 = (e.target===overlay); });
+  overlay.addEventListener("click", (e)=>{ if(e.target===overlay && mouseDownOnOverlay39){ stopSpeaking(); overlay.remove(); } mouseDownOnOverlay39 = false; });
+  overlay.querySelector("#modalStarBtn").addEventListener("click", ()=>{
+    toggleBookmark(id);
+    stopSpeaking();
+    overlay.remove();
+    openCardModal(id);
+  });
+  overlay.querySelector("#modalEditBtn").addEventListener("click", ()=>{
+    stopSpeaking();
+    overlay.remove();
+    openEditModal(id, ()=>{ openCardModal(id); renderBrowseList(); });
+  });
+}
+
+/* ---- 문제/정답/이미지 수정 ---- */
+function openEditModal(id, onSaved){
+  const original = getData().find(d=>d.id===id);
+  if(!original) return;
+  let workingImages = (original.images || []).slice();
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const renderPreview = ()=>{
+    if(!workingImages.length) return `<div class="no-image">이미지 없음</div>`;
+    return `<div class="edit-image-grid">${workingImages.map((im,idx)=>{
+      const src = imgSrc(im);
+      return `<div class="edit-image-item">
+        <img src="${src||''}" class="q-image">
+        <button type="button" class="edit-image-del" data-idx="${idx}">✕</button>
+        <div class="edit-image-tools">
+          <button type="button" class="mini-btn" data-crop="${idx}">✂️ 자르기</button>
+          <button type="button" class="mini-btn" data-insq="${idx}">문제에 삽입</button>
+          <button type="button" class="mini-btn" data-insa="${idx}">정답에 삽입</button>
+        </div>
+      </div>`;
+    }).join("")}</div>`;
+  };
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <span class="close-x">✕</span>
+      <h3>문제 수정</h3>
+      <div class="edit-field">
+        <label>문제 <small style="font-weight:400;color:var(--muted);">(이미지 삽입 위치에 {{img:번호}} 표시가 자동으로 들어갑니다)</small></label>
+        <textarea class="edit-textarea" id="editQuestion">${escapeHtml(original.question)}</textarea>
+      </div>
+      <div class="edit-field">
+        <label>정답 · 해설</label>
+        <textarea class="edit-textarea" id="editAnswer">${escapeHtml(original.answer)}</textarea>
+      </div>
+      <div class="edit-field">
+        <label>키워드 <small style="font-weight:400;color:var(--muted);">(쉼표 , 로 구분해서 입력)</small></label>
+        <input type="text" class="search-box" id="editTags" placeholder="예: 시멘트, 혼화재료" value="${escapeHtml((original.tags||[]).join(', '))}">
+      </div>
+      <div class="edit-field">
+        <label>단원 <small style="font-weight:400;color:var(--muted);">(자동 분류가 틀렸으면 여기서 바로 고칠 수 있어요)</small></label>
+        <div class="btn-row" style="gap:8px;">
+          <select class="search-box" id="editUnitMajor" style="flex:1;">
+            ${unitMajorList().map(m=>`<option value="${escapeHtml(m)}" ${m===original.unitMajor?'selected':''}>${escapeHtml(m)}</option>`).join("")}
+          </select>
+          <select class="search-box" id="editUnitMinor" style="flex:1;"></select>
+        </div>
+      </div>
+      <div class="edit-field">
+        <label>이미지 (<span id="editImageCount">${workingImages.length}</span>장)</label>
+        <div id="editImagePreview">${renderPreview()}</div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn ghost" id="editImageUpload">이미지 추가</button>
+          <button class="btn ghost" id="editImageRemove" style="color:var(--rose);border-color:var(--rose);">전체 삭제</button>
+        </div>
+        <input type="file" accept="image/*" id="editImageFile" multiple style="display:none;">
+      </div>
+      <div class="btn-row" style="margin-top:18px;">
+        <button class="btn ghost" id="editCancel">취소</button>
+        <button class="btn primary" id="editSave">저장</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.querySelector(".close-x").addEventListener("click", close);
+  overlay.querySelector("#editCancel").addEventListener("click", close);
+  // 드래그로 텍스트를 선택하다가 마우스를 모달 바깥(배경)에서 놓아도 닫히지 않도록,
+  // mousedown과 click(=mouseup 시점)이 둘 다 배경 자체일 때만 닫는다.
+  let mouseDownOnOverlay = false;
+  overlay.addEventListener("mousedown", e=>{ mouseDownOnOverlay = (e.target===overlay); });
+  overlay.addEventListener("click", e=>{ if(e.target===overlay && mouseDownOnOverlay) close(); mouseDownOnOverlay = false; });
+
+  const refreshPreview = ()=>{
+    overlay.querySelector("#editImagePreview").innerHTML = renderPreview();
+    const countEl = overlay.querySelector("#editImageCount");
+    if(countEl) countEl.textContent = workingImages.length;
+    overlay.querySelectorAll(".edit-image-del").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const idx = Number(btn.dataset.idx);
+        const qTa = overlay.querySelector("#editQuestion");
+        const aTa = overlay.querySelector("#editAnswer");
+        if(qTa) qTa.value = stripImgPlaceholder(qTa.value, idx);
+        if(aTa) aTa.value = stripImgPlaceholder(aTa.value, idx);
+        workingImages.splice(idx, 1);
+        refreshPreview();
+      });
+    });
+    overlay.querySelectorAll("[data-crop]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const idx = Number(btn.dataset.crop);
+        const src = imgSrc(workingImages[idx]);
+        if(!src) return;
+        openCropTool(src, (cropped)=>{
+          workingImages[idx] = cropped;
+          refreshPreview();
+        });
+      });
+    });
+    overlay.querySelectorAll("[data-insq]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        insertAtCursor(overlay.querySelector("#editQuestion"), `{{img:${btn.dataset.insq}}}`);
+      });
+    });
+    overlay.querySelectorAll("[data-insa]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        insertAtCursor(overlay.querySelector("#editAnswer"), `{{img:${btn.dataset.insa}}}`);
+      });
+    });
+  };
+  refreshPreview();
+
+  const majorSel = overlay.querySelector("#editUnitMajor");
+  const minorSel = overlay.querySelector("#editUnitMinor");
+  const fillMinorOptions = (major, preferMinor)=>{
+    const minors = unitMinorsOf(major);
+    const keep = minors.includes(preferMinor) ? preferMinor : minors[0];
+    minorSel.innerHTML = minors.map(m=>`<option value="${escapeHtml(m)}" ${m===keep?'selected':''}>${escapeHtml(m)}</option>`).join("");
+  };
+  fillMinorOptions(original.unitMajor, original.unitMinor);
+  majorSel.addEventListener("change", ()=> fillMinorOptions(majorSel.value, null));
+
+  const fileInput = overlay.querySelector("#editImageFile");
+  overlay.querySelector("#editImageUpload").addEventListener("click", ()=> fileInput.click());
+  fileInput.addEventListener("change", async ()=>{
+    const files = Array.from(fileInput.files || []);
+    if(!files.length) return;
+    fileInput.disabled = true;
+    const uploadBtn = overlay.querySelector("#editImageUpload");
+    if(uploadBtn){ uploadBtn.disabled = true; uploadBtn.textContent = "이미지 처리 중..."; }
+    try{
+      // Promise.all로 병렬 처리하면 파일마다 압축 완료 순서가 뒤섞여 이미지 순서가 흔들릴 수 있어
+      // 업로드한 순서를 그대로 유지하도록 순차적으로 압축한다.
+      for(const file of files){
+        const compressed = await compressImageFile(file);
+        if(compressed) workingImages.push(compressed);
+      }
+    }finally{
+      fileInput.disabled = false;
+      if(uploadBtn){ uploadBtn.disabled = false; uploadBtn.textContent = "이미지 추가"; }
+      refreshPreview();
+      fileInput.value = ""; // 같은 파일을 다시 선택해도 change 이벤트가 재발생하도록 초기화
+    }
+  });
+  overlay.querySelector("#editImageRemove").addEventListener("click", ()=>{
+    const qTa = overlay.querySelector("#editQuestion");
+    const aTa = overlay.querySelector("#editAnswer");
+    if(qTa) qTa.value = qTa.value.replace(/\{\{img:\d+\}\}/g, "");
+    if(aTa) aTa.value = aTa.value.replace(/\{\{img:\d+\}\}/g, "");
+    workingImages = [];
+    refreshPreview();
+  });
+
+  overlay.querySelector("#editSave").addEventListener("click", ()=>{
+    const qText = overlay.querySelector("#editQuestion").value.trim();
+    const aText = overlay.querySelector("#editAnswer").value.trim();
+    if(!qText || !aText){ alert("문제와 정답을 모두 입력해주세요."); return; }
+    if(!store.edits) store.edits = {};
+    const dupIds = findDuplicateIds(id);
+    let targets = [id];
+    if(dupIds.length){
+      const applyAll = confirm(`이 문제는 중복 출제된 문제가 ${dupIds.length}개 더 있습니다.\n중복된 문제도 모두 함께 수정할까요?\n\n확인: 중복 문제 모두 수정\n취소: 이 문제만 수정`);
+      if(applyAll) targets = targets.concat(dupIds);
+    }
+    const tagsText = overlay.querySelector("#editTags").value || "";
+    const tagsArr = tagsText.split(",").map(t=>t.trim()).filter(Boolean).slice(0,6);
+    const newUnitMajor = overlay.querySelector("#editUnitMajor").value;
+    const newUnitMinor = overlay.querySelector("#editUnitMinor").value;
+    targets.forEach(tid=>{
+      store.edits[tid] = {question:qText, answer:aText, images:workingImages, tags:tagsArr, unitMajor:newUnitMajor, unitMinor:newUnitMinor};
+    });
+    const ok = saveStore();
+    if(!ok) return; // 저장 실패 시 편집창을 닫지 않고 이미지를 줄여 재시도할 수 있게 유지
+    close();
+    toast(targets.length>1 ? `중복 문제 ${targets.length}개를 함께 수정했습니다` : "저장되었습니다");
+    if(onSaved) onSaved();
+  });
+}
+
+/* ---- 이미지 삭제 시 본문에 남는 {{img:N}} 표시 정리 ---- */
+function stripImgPlaceholder(text, removedIdx){
+  if(!text) return text;
+  return text.replace(/\{\{img:(\d+)\}\}/g, (m, numStr)=>{
+    const n = Number(numStr);
+    if(n === removedIdx) return "";
+    if(n > removedIdx) return `{{img:${n-1}}}`;
+    return m;
+  });
+}
+
+/* ---- 커서 위치에 텍스트 삽입 ---- */
+function insertAtCursor(textarea, text){
+  const start = textarea.selectionStart, end = textarea.selectionEnd;
+  const val = textarea.value;
+  textarea.value = val.slice(0,start) + text + val.slice(end);
+  const pos = start + text.length;
+  textarea.selectionStart = textarea.selectionEnd = pos;
+  textarea.focus();
+}
+
+/* ---- 이미지 자르기 도구 (드래그로 영역 선택 후 자르기) ---- */
+function openCropTool(src, onApply){
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay crop-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box crop-box">
+      <span class="close-x">✕</span>
+      <h3>이미지 자르기</h3>
+      <p style="font-size:0.78rem;color:var(--muted);">남길 영역을 드래그해서 선택한 뒤 적용하세요.</p>
+      <div class="crop-canvas-wrap" id="cropWrap">
+        <img id="cropImg" src="${src}" draggable="false">
+        <div class="crop-rect" id="cropRect"></div>
+      </div>
+      <div class="btn-row" style="margin-top:14px;">
+        <button class="btn ghost" id="cropReset">전체 선택</button>
+        <button class="btn ghost" id="cropCancel">취소</button>
+        <button class="btn primary" id="cropApply">자르기 적용</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const wrap = overlay.querySelector("#cropWrap");
+  const rectEl = overlay.querySelector("#cropRect");
+  const imgEl = overlay.querySelector("#cropImg");
+  let rect = {x:0.05, y:0.05, w:0.9, h:0.9};
+  const drawRect = ()=>{
+    rectEl.style.left = (rect.x*100)+"%";
+    rectEl.style.top = (rect.y*100)+"%";
+    rectEl.style.width = (rect.w*100)+"%";
+    rectEl.style.height = (rect.h*100)+"%";
+  };
+  imgEl.addEventListener("load", drawRect);
+  drawRect();
+
+  let dragging=false, startPt=null;
+  const ptFromEvent = (e)=>{
+    const r = wrap.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY);
+    return { x: Math.min(Math.max((cx-r.left)/r.width,0),1), y: Math.min(Math.max((cy-r.top)/r.height,0),1) };
+  };
+  const onDown = (e)=>{ dragging=true; startPt = ptFromEvent(e); rect = {x:startPt.x,y:startPt.y,w:0,h:0}; drawRect(); };
+  const onMove = (e)=>{
+    if(!dragging) return;
+    const p = ptFromEvent(e);
+    rect.x = Math.min(startPt.x, p.x); rect.y = Math.min(startPt.y, p.y);
+    rect.w = Math.abs(p.x-startPt.x); rect.h = Math.abs(p.y-startPt.y);
+    drawRect();
+  };
+  const onUp = ()=>{ dragging=false; };
+  wrap.addEventListener("mousedown", onDown);
+  wrap.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
+  wrap.addEventListener("touchstart", onDown, {passive:true});
+  wrap.addEventListener("touchmove", onMove, {passive:true});
+  wrap.addEventListener("touchend", onUp);
+
+  const close = ()=>{
+    wrap.removeEventListener("mousedown", onDown);
+    wrap.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", onUp);
+    overlay.remove();
+  };
+  overlay.querySelector(".close-x").addEventListener("click", close);
+  overlay.querySelector("#cropCancel").addEventListener("click", close);
+  overlay.querySelector("#cropReset").addEventListener("click", ()=>{ rect = {x:0,y:0,w:1,h:1}; drawRect(); });
+  overlay.querySelector("#cropApply").addEventListener("click", ()=>{
+    if(rect.w<0.02 || rect.h<0.02){ alert("자를 영역을 드래그해서 선택해주세요."); return; }
+    const natW = imgEl.naturalWidth, natH = imgEl.naturalHeight;
+    const sx = rect.x*natW, sy = rect.y*natH, sw = rect.w*natW, sh = rect.h*natH;
+    // 잘라낸 영역이 표준 상한(IMAGE_STD_MAXDIM)보다 크면 축소해서 저장한다.
+    let outW = Math.max(1,Math.round(sw)), outH = Math.max(1,Math.round(sh));
+    if(outW > IMAGE_STD_MAXDIM || outH > IMAGE_STD_MAXDIM){
+      const scale = IMAGE_STD_MAXDIM / Math.max(outW, outH);
+      outW = Math.max(1, Math.round(outW * scale));
+      outH = Math.max(1, Math.round(outH * scale));
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = outW; canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    // WebP로 압축 저장(용량 절감). 브라우저가 WebP 인코딩을 지원하지 않으면 PNG로 자동 폴백.
+    let dataUrl = canvas.toDataURL("image/webp", IMAGE_STD_QUALITY);
+    if(!dataUrl.startsWith("data:image/webp")){ dataUrl = canvas.toDataURL("image/png"); }
+    onApply(dataUrl);
+    close();
+  });
+}
+
+
+
+/* ---- 앱 소개 · 오픈톡 ---- */
+function renderAbout(){
+  const cfg = activeExamConfig();
+  /* 예전에 저장된 examConfig(store)에는 openTalks 필드가 없을 수 있으므로,
+     저장된 설정에 없으면 앱 기본 EXAM_CONFIG의 오픈톡 링크를 대신 보여준다. */
+  const openTalks = (cfg.openTalks && cfg.openTalks.length) ? cfg.openTalks : EXAM_CONFIG.openTalks;
+  const data = getData();
+  const years = [...new Set(data.map(d=>d.year))].sort();
+  setPageBar("어플 소개");
+  app.innerHTML = `
+    <div class="section-card">
+      <h3>${escapeHtml(cfg.titleText)}</h3>
+      <p style="font-size:0.85rem;color:var(--muted);line-height:1.6;margin-top:8px;">
+        총 ${data.length}문항 · ${years[0]}–${years[years.length-1]} 기출 수록<br>
+        연도별·단원별·빈도순 학습, 실전 모의고사, 오답노트, SRS 복습, 즐겨찾기, 전체 문제 검색 기능을 제공합니다.
+      </p>
+    </div>
+    <div class="section-card">
+      <h3>오픈채팅방</h3>
+      <p style="font-size:0.85rem;color:var(--muted);line-height:1.6;">함께 공부하는 사람들과 정보를 나눠보세요.</p>
+      ${(openTalks && openTalks.length) ? openTalks.map(t=>`
+        <a class="btn primary" style="display:block;text-align:center;text-decoration:none;margin-top:12px;" href="${escapeHtml(t.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.label||"오픈채팅 참여하기")}</a>
+      `).join("") : (cfg.openTalkUrl || EXAM_CONFIG.openTalkUrl ? `
+        <a class="btn primary" style="display:block;text-align:center;text-decoration:none;margin-top:12px;" href="${cfg.openTalkUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(cfg.openTalkLabel||"오픈채팅 참여하기")}</a>
+      ` : `
+        <div class="note-box" style="margin-top:12px;">아직 등록된 오픈채팅방 링크가 없습니다.</div>
+      `)}
+    </div>
+    <div class="section-card">
+      <p style="font-size:0.78rem;color:var(--muted);line-height:1.7;">
+        개인 공부 목적으로 인터넷상의 자료를 기반으로 만든 어플이며 상업적 목적으로 이용을 금합니다.<br>
+        또한 자료 정확도에 대한 어떠한 책임도 지지않습니다.<br>
+        개선 및 수정, 저작권 관련 삭제 요청은 아래 메일로 연락 주세요.<br>
+        E-mail : smckwz@gmail.com
+      </p>
+    </div>
+  `;
+}
+
+function render(){
+  headerMeta();
+  clearPageBar();
+  if(state.view==="home") renderHome();
+  else if(state.view==="unit") renderUnitPicker();
+  else if(state.view==="year") renderYearPicker();
+  else if(state.view==="wrong") renderWrongList();
+  else if(state.view==="bookmark") renderBookmarkList();
+  else if(state.view==="srs") renderSRSList();
+  else if(state.view==="freq") renderFreqList();
+  else if(state.view==="exam") renderExamIntro();
+  else if(state.view==="settings") renderSettings();
+  else if(state.view==="card") renderCard();
+  else if(state.view==="browse") renderBrowseView();
+  else if(state.view==="about") renderAbout();
+}
+
+applyExamConfig();
+
+/* ---- 이미지 확대 보기: cardBox(학습카드)는 자체 제스처 처리기에서 이미 처리하므로 제외하고,
+      그 외 모든 화면(모의고사 응시/채점, 전체목록 상세 등)에서 이미지 탭 시 확대되도록 전역 위임 처리 ---- */
+document.addEventListener("click", (e)=>{
+  const img = e.target.closest && e.target.closest("img.q-image");
+  if(!img) return;
+  if(img.closest("#cardBox")) return; // 학습카드 화면은 attachCardGestures에서 처리
+  openImageZoom(img.src);
+});
+
+render();
+</script>
+
+
+<div id="toast" class="toast"></div><script>try{localStorage.setItem("arch_exam_app_v1","{\"progress\":{},\"wrong\":{},\"bookmarks\":{},\"streak\":{\"last\":null,\"count\":0},\"solvedTotal\":0,\"correctTotal\":0,\"customData\":null,\"edits\":{},\"examConfig\":null,\"session\":{},\"examSession\":null,\"setRepeats\":{}}");}catch(e){}</script>
 </body></html>
