@@ -10,7 +10,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="건축기사 필답노트">
-<meta name="theme-color" content="#1c2430">
+<meta name="theme-color" content="#0f3d3e">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
@@ -739,7 +739,7 @@
    [2] 완성본을 내보낼 때 파일명도 반드시 타임스탬프를 포함해야 한다.
        형식: smckwz_건축기사필답노트_YY_MM_DD_HH_MM.html (위 버전 값과 동일한 시각, 언더바 구분)
        두 규칙 다 매번 빠뜨리기 쉬우니 파일을 건드릴 때마다 이 주석부터 확인할 것. */
-const APP_VERSION = "26.08.17.11.40";
+const APP_VERSION = "26.08.17.21.10";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -2887,7 +2887,7 @@ function renderSettings(){
     const dateStr = new Date().toISOString().slice(0,10);
     a.download = (activeExamConfig().markText||"exam") + (includeProgress ? "_전체백업_" : "_문제데이터_") + dateStr + ".json";
     document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
   });
 
   app.querySelector("#restoreSample").addEventListener("click", ()=>{
@@ -3106,7 +3106,7 @@ async function buildAndDownloadZipBackup(includeProgress, password){
     a.href = url;
     a.download = (cfg.markText||"exam") + "_전체백업_" + stamp + ".zip";
     document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(()=>URL.revokeObjectURL(url), 8000);
     toast("ZIP 백업이 저장되었습니다");
   }catch(err){
     console.error(err);
