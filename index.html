@@ -812,6 +812,24 @@
   .tagmodal-item:first-child{border-top:none;padding-top:6px;}
   .tagmodal-meta{font-size:0.78rem;color:var(--muted);margin-bottom:6px;font-weight:600;}
 
+/* ============ AI 해설 물어보기 / 문제 공유하기 모달 (방수산업기사 CBT 앱에서 이식) ============ */
+.ai-svc-btn{display:flex;align-items:center;gap:10px;}
+.ai-svc-btn svg{flex-shrink:0;border-radius:50%;}
+.optA-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.optA-label{width:34px;flex-shrink:0;font-size:0.74rem;font-weight:800;color:var(--ink);}
+.optA-chips{display:flex;gap:6px;flex:1;}
+.toggle-chip-wrap{flex:1;position:relative;display:block;}
+.toggle-chip-wrap input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;}
+.toggle-chip-wrap span{display:block;text-align:center;padding:7px 4px;border-radius:8px;border:1.5px solid var(--line);font-size:0.76rem;font-weight:700;color:var(--muted);cursor:pointer;background:#fff;}
+.toggle-chip-wrap input:checked + span{background:var(--teal-soft);border-color:var(--teal);color:var(--teal);}
+.primary-share-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--teal);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:0.86rem;font-weight:800;padding:11px;cursor:pointer;margin-top:2px;}
+.primary-share-btn:active{transform:scale(0.98);}
+.share-preview{margin:14px 0;text-align:center;}
+.share-preview img{max-width:100%;max-height:340px;border-radius:10px;border:1px solid var(--line);}
+.share-text-preview{white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:0.82rem;line-height:1.6;max-height:300px;overflow-y:auto;margin:14px 0;}
+.copy-confirm-box{text-align:center;}
+.copy-confirm-box h3{padding-right:0;}
+.copy-confirm-icon{font-size:2.2rem;margin-bottom:6px;}
 </style>
 <link rel="manifest" href="blob:https://challenge60.github.io/75e8c21b-20d6-4e32-a62c-f675ce53576e"></head>
 <body>
@@ -819,10 +837,10 @@
 <div class="app-shell">
 <header class="top compact">
   <div class="wrap">
-    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 2026.08.20_00.29</span></div>
+    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 2026.08.22_21.37</span></div>
     <div class="meta-row" id="metaRow" style="display: none;">
       <div class="meta-line" id="headerMeta" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <span id="headerMetaLeft">Ver. 2026.08.20_00.29</span>
+        <span id="headerMetaLeft">Ver. 2026.08.22_21.37</span>
         <span id="headerMetaRight">2004–2026 (1792문항)</span>
       </div>
       <button type="button" class="install-btn" id="installBtn">📲 앱 설치</button>
@@ -968,7 +986,7 @@
    [2] 완성본을 내보낼 때 파일명도 반드시 타임스탬프를 포함해야 한다.
        형식: smc_건축기사_yyyymmdd_hhmm.html (계정 아이디 smc + 자격증명 + 날짜 + 시분)
        두 규칙 다 매번 빠뜨리기 쉬우니 파일을 건드릴 때마다 이 주석부터 확인할 것. */
-const APP_VERSION = "2026.08.21_01.13";
+const APP_VERSION = "2026.08.22_21.37";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -2909,7 +2927,7 @@ function renderCard(){
       return (br||1)-(ar||1);
     });
     const stars = "★".repeat(Math.min(sorted.length,5));
-    return `<span class="tag star-freq">${stars}( ${sorted.join(",")} )</span>`;
+    return `<button type="button" class="tag star-freq mode-tag-btn" id="starDupTagBtn">${stars}( ${sorted.join(",")} )</button>`;
   })() : "";
   const titleLabel = state.modeLabel ? `${modeTitle(state.mode)} · ${state.modeLabel}` : modeTitle(state.mode);
   const isPractice = state.studyMode === "practice";
@@ -2941,7 +2959,7 @@ function renderCard(){
         <button class="corner-emoji-btn" id="voiceModeBtn" title="음성모드 전환">🔊</button>
         <button class="corner-emoji-btn" id="starBtn" title="즐겨찾기">☆</button>
         <button class="corner-emoji-btn" id="aiHelpBtn" title="AI 해설 보기">🤖</button>
-        <button class="corner-emoji-btn" id="shareBtn" title="문제/답 공유">🔗</button>
+        <button class="corner-emoji-btn" id="shareBtn" title="문제 공유하기">📤</button>
         <button class="corner-emoji-btn" id="editBtn" title="수정">✏️</button>
       </div>
       <div class="card-box" id="cardBox">
@@ -2981,7 +2999,9 @@ function renderCard(){
   if(modeTagBtnEl) modeTagBtnEl.addEventListener("click", openStudyModeSwitchModal);
   document.getElementById("editBtn").addEventListener("click", ()=> openEditModal(q.id, ()=> renderCard()));
   document.getElementById("aiHelpBtn").addEventListener("click", ()=> openAiHelpModal(q));
-  document.getElementById("shareBtn").addEventListener("click", ()=> shareQuestion(q));
+  document.getElementById("shareBtn").addEventListener("click", ()=> openShareOptionsModal(q));
+  const starDupTagBtnEl = document.getElementById("starDupTagBtn");
+  if(starDupTagBtnEl) starDupTagBtnEl.addEventListener("click", ()=> openDuplicateModal(q.id));
   const voiceModeBtnEl = document.getElementById("voiceModeBtn");
   voiceModeBtnEl.classList.toggle("active", isVoice);
   voiceModeBtnEl.textContent = isVoice ? "🔊" : "🔈";
@@ -3307,8 +3327,8 @@ function buildAiPrompt(q){
 function openAiHelpModal(q){
   document.querySelectorAll(".modal-overlay").forEach(o=>o.remove());
   const prompt = buildAiPrompt(q);
-  const chatgptUrl = "https://chatgpt.com/?q=" + encodeURIComponent(prompt);
   const googleAiUrl = "https://www.google.com/search?udm=50&q=" + encodeURIComponent(prompt);
+  const svcLabel = {chatgpt:"새 대화창을", claude:"새 대화창을", perplexity:"새 검색을"};
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
@@ -3316,7 +3336,7 @@ function openAiHelpModal(q){
       <span class="close-x">✕</span>
       <h3>🤖 AI 해설로 물어보기</h3>
       <div class="mode-choice-row">
-        <a class="btn ghost" href="${chatgptUrl}" target="_blank" rel="noopener" style="text-decoration:none;display:block;">💬 ChatGPT에게 해설 요청<small>문제와 모범답안을 담아 새 대화창을 엽니다</small></a>
+        ${AI_ASK_SERVICES.map(s=>`<button type="button" class="btn ghost ai-svc-btn" data-ai-svc-modal="${s.key}">${s.icon}<span>${s.label}에게 해설 요청<small>문제와 모범답안을 담아 ${svcLabel[s.key]||"새 대화창을"} 엽니다</small></span></button>`).join("")}
         <a class="btn ghost" href="${googleAiUrl}" target="_blank" rel="noopener" style="text-decoration:none;display:block;">🔎 Google AI 해설 보기<small>Google AI 모드 검색결과로 엽니다</small></a>
       </div>
       <div style="margin-top:10px;font-size:0.78rem;color:var(--muted);">※ 로그인 상태나 브라우저에 따라 프롬프트가 자동으로 채워지지 않을 수 있어요. 그 경우 붙여넣기 해주세요.</div>
@@ -3324,29 +3344,46 @@ function openAiHelpModal(q){
   document.body.appendChild(overlay);
   overlay.querySelector(".close-x").addEventListener("click", ()=> overlay.remove());
   overlay.addEventListener("click", (e)=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.querySelectorAll("[data-ai-svc-modal]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ askAiAboutQuestion(btn.dataset.aiSvcModal, q); overlay.remove(); });
+  });
 }
-/* ---- 문제/답 공유 (카카오톡 등 메신저) ---- */
-async function shareQuestion(q){
-  const multiRound = datasetHasMultiRound(getData());
-  const label = yearRoundLabel(q, multiRound) + (q.no?`-${q.no}`:"");
-  const qText = plainTextOf(q.question);
-  const aText = plainTextOf(q.answer);
-  const shareText = `[건축기사 필답노트 · ${label}]\n\n[문제]\n${qText}\n\n[정답]\n${aText}`;
-  if(navigator.share){
-    try{
-      await navigator.share({ title: `건축기사 필답노트 ${label}`, text: shareText });
-      return;
-    }catch(err){
-      if(err && err.name === "AbortError") return; // 사용자가 공유를 취소한 경우
-      // 공유 실패 시 클립보드 복사로 대체
-    }
-  }
-  try{
-    await navigator.clipboard.writeText(shareText);
-    toast("문제/답이 클립보드에 복사되었습니다. 카카오톡 등에 붙여넣기 해주세요");
-  }catch(err){
-    alert(shareText);
-  }
+
+/* ---- 문제 공유하기: 형식(이미지/텍스트) · 내용(문제만/정답포함) 선택 모달 ---- */
+function openShareOptionsModal(q){
+  document.querySelectorAll(".modal-overlay").forEach(o=>o.remove());
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <span class="close-x">✕</span>
+      <h3>📤 문제 공유하기</h3>
+      <div class="optA-row" style="margin-top:14px;">
+        <span class="optA-label">형식</span>
+        <div class="optA-chips">
+          <label class="toggle-chip-wrap"><input type="radio" name="shareFmtModal" value="image" checked><span>🖼️ 이미지</span></label>
+          <label class="toggle-chip-wrap"><input type="radio" name="shareFmtModal" value="text"><span>📄 텍스트</span></label>
+        </div>
+      </div>
+      <div class="optA-row">
+        <span class="optA-label">내용</span>
+        <div class="optA-chips">
+          <label class="toggle-chip-wrap"><input type="radio" name="shareContentModal" value="plain" checked><span>문제만</span></label>
+          <label class="toggle-chip-wrap"><input type="radio" name="shareContentModal" value="full"><span>정답포함</span></label>
+        </div>
+      </div>
+      <button type="button" class="primary-share-btn" id="shareModalGoBtn">📤 공유하기</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").addEventListener("click", ()=> overlay.remove());
+  overlay.addEventListener("click", (e)=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.querySelector("#shareModalGoBtn").addEventListener("click", ()=>{
+    const fmt = overlay.querySelector('input[name="shareFmtModal"]:checked').value;
+    const withAnswer = overlay.querySelector('input[name="shareContentModal"]:checked').value === "full";
+    overlay.remove();
+    if(fmt === "text") shareQuestionText(q, withAnswer);
+    else shareQuestionImage(q, withAnswer);
+  });
 }
 function openStudyModeSwitchModal(){
   const overlay = document.createElement("div");
@@ -3457,6 +3494,358 @@ function buildDuplicateIndex(data){
     }
   });
   return index;
+}
+
+/* ============ AI에게 물어보기 / 문제 공유하기 (방수산업기사 CBT 앱 기능 이식) ============ */
+/* 정답 공개 후에만 노출: revealAnswer()에서 answerSlot 하단에 렌더링된다 */
+const AI_ASK_SERVICES = [
+  {key:"chatgpt", label:"ChatGPT",
+    icon:'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#0f0f0f"/><g fill="#fff"><rect x="10.5" y="3" width="3" height="7" rx="1.5" transform="rotate(0 12 12)"/><rect x="10.5" y="3" width="3" height="7" rx="1.5" transform="rotate(60 12 12)"/><rect x="10.5" y="3" width="3" height="7" rx="1.5" transform="rotate(120 12 12)"/><rect x="10.5" y="3" width="3" height="7" rx="1.5" transform="rotate(180 12 12)"/><rect x="10.5" y="3" width="3" height="7" rx="1.5" transform="rotate(240 12 12)"/><rect x="10.5" y="3" width="3" height="7" rx="1.5" transform="rotate(300 12 12)"/></g></svg>',
+    url:p=>"https://chatgpt.com/?q="+encodeURIComponent(p)},
+  {key:"claude", label:"Claude",
+    icon:'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#D97757"/><g fill="#fff"><rect x="11" y="3" width="2" height="7" rx="1" transform="rotate(0 12 12)"/><rect x="11" y="3" width="2" height="7" rx="1" transform="rotate(45 12 12)"/><rect x="11" y="3" width="2" height="7" rx="1" transform="rotate(90 12 12)"/><rect x="11" y="3" width="2" height="7" rx="1" transform="rotate(135 12 12)"/><rect x="11" y="3" width="2" height="7" rx="1" transform="rotate(180 12 12)"/><rect x="11" y="3" width="2" height="7" rx="1" transform="rotate(225 12 12)"/><rect x="11" y="3" width="2" height="7" rx="1" transform="rotate(270 12 12)"/><rect x="11" y="3" width="2" height="7" rx="1" transform="rotate(315 12 12)"/></g></svg>',
+    url:p=>"https://claude.ai/new?q="+encodeURIComponent(p)},
+  {key:"perplexity", label:"Perplexity",
+    icon:'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#20808D"/><g fill="#fff"><path d="M12 4 L15 11 L12 12 L9 11 Z" transform="rotate(0 12 12)"/><path d="M12 4 L15 11 L12 12 L9 11 Z" transform="rotate(90 12 12)"/><path d="M12 4 L15 11 L12 12 L9 11 Z" transform="rotate(180 12 12)"/><path d="M12 4 L15 11 L12 12 L9 11 Z" transform="rotate(270 12 12)"/></g></svg>',
+    url:p=>"https://www.perplexity.ai/search?q="+encodeURIComponent(p)},
+];
+
+/* ---- 클립보드 복사 (Clipboard API 실패 시 구식 execCommand 폴백) ---- */
+async function copyTextRobust(text){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    try{ await navigator.clipboard.writeText(text); return true; }catch(e){ /* 아래 폴백으로 계속 */ }
+  }
+  try{
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }catch(e){ return false; }
+}
+
+/* ---- AI에게 이 문제 물어보기: 서비스 선택 시 프롬프트를 클립보드에 복사하고 새 탭으로 연다 ---- */
+function askAiAboutQuestion(serviceKey, q){
+  const svc = AI_ASK_SERVICES.find(s=>s.key===serviceKey);
+  if(!svc) return;
+  const prompt = buildAiPrompt(q);
+  copyTextRobust(prompt);
+  toast("질문 내용을 복사했어요 · 붙여넣기(Ctrl/⌘+V)로 확인하세요");
+  window.open(svc.url(prompt), "_blank", "noopener");
+}
+
+/* ---- 문제 공유용 텍스트 생성 (정답 포함/미포함 선택 가능) ---- */
+function buildShareText(q, withAnswer){
+  const multiRound = datasetHasMultiRound(getData());
+  const label = yearRoundLabel(q, multiRound) + (q.no?`-${q.no}`:"");
+  const lines = [];
+  lines.push(`건축기사 실기 필답노트 · ${label}${q.unitMajor?" · "+q.unitMajor:""}${q.unitMinor?" · "+q.unitMinor:""}`);
+  lines.push("");
+  lines.push("[문제]");
+  lines.push(plainTextOf(q.question));
+  if(withAnswer){
+    lines.push("");
+    lines.push("[모범답안]");
+    lines.push(plainTextOf(q.answer));
+  }
+  return lines.join("\n");
+}
+
+/* ---- 공유 이미지 카드: 앱 팔레트를 그대로 살려 캔버스로 그린다 ---- */
+const SHARE_COLORS = {
+  ink:"#1c2430", deep:"#243c3d", teal:"#2f6b57", tealSoft:"#e3ede8",
+  amber:"#c5934c", amberSoft:"#faeedd",
+  paper:"#faf8f3", card:"#ffffff", line:"#eae6da", muted:"#7b7669"
+};
+function shareCanvasWrapText(ctx, text, maxWidth){
+  const paras = String(text==null?"":text).split("\n");
+  const lines = [];
+  paras.forEach(para=>{
+    if(para === ""){ lines.push(""); return; }
+    let cur = "";
+    for(const ch of para){
+      const test = cur + ch;
+      if(ctx.measureText(test).width > maxWidth && cur !== ""){
+        lines.push(cur);
+        cur = ch;
+      } else {
+        cur = test;
+      }
+    }
+    lines.push(cur);
+  });
+  return lines;
+}
+function shareRoundRect(ctx, x, y, w, h, r){
+  if(typeof r === "number") r = {tl:r, tr:r, br:r, bl:r};
+  ctx.beginPath();
+  ctx.moveTo(x + r.tl, y);
+  ctx.lineTo(x + w - r.tr, y);
+  ctx.arcTo(x + w, y, x + w, y + r.tr, r.tr);
+  ctx.lineTo(x + w, y + h - r.br);
+  ctx.arcTo(x + w, y + h, x + w - r.br, y + h, r.br);
+  ctx.lineTo(x + r.bl, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r.bl, r.bl);
+  ctx.lineTo(x, y + r.tl);
+  ctx.arcTo(x, y, x + r.tl, y, r.tl);
+  ctx.closePath();
+}
+async function buildQuestionShareCanvas(q, withAnswer){
+  const SCALE = 2;
+  const W = 720;
+  const PAD = 32;
+  const contentW = W - PAD*2;
+  const C = SHARE_COLORS;
+  const multiRound = datasetHasMultiRound(getData());
+  const label = yearRoundLabel(q, multiRound) + (q.no?`-${q.no}`:"");
+
+  const measureCanvas = document.createElement("canvas");
+  const mctx = measureCanvas.getContext("2d");
+
+  const qPlain = plainTextOf(q.question);
+  mctx.font = "600 26px 'IBM Plex Sans KR', sans-serif";
+  const qLines = shareCanvasWrapText(mctx, `${label}. ${qPlain}`, contentW - 8);
+
+  let ansLines = [];
+  if(withAnswer && q.answer){
+    mctx.font = "400 21px 'IBM Plex Sans KR', sans-serif";
+    ansLines = shareCanvasWrapText(mctx, plainTextOf(q.answer), contentW - 32);
+  }
+
+  const headerH = 86;
+  let y = headerH + 28;
+  y += qLines.length * 34 + 14;
+  if(withAnswer && ansLines.length){
+    y += 44 + ansLines.length * 28 + 24;
+  }
+  y += 70;
+
+  const H = Math.ceil(y);
+  const canvas = document.createElement("canvas");
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(SCALE, SCALE);
+
+  ctx.fillStyle = C.paper;
+  ctx.fillRect(0, 0, W, H);
+
+  const grad = ctx.createLinearGradient(0,0,W,0);
+  grad.addColorStop(0, C.deep);
+  grad.addColorStop(1, C.teal);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, headerH);
+  ctx.fillStyle = C.amber;
+  ctx.fillRect(0, headerH-6, W, 6);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 22px 'IBM Plex Sans KR', sans-serif";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("건축기사 실기 필답노트", PAD, 44);
+
+  ctx.font = "400 15px 'IBM Plex Sans KR', sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  const subj = q.unitMajor || "";
+  ctx.fillText(`${subj}${subj?" · ":""}${label} 기출`, PAD, 68);
+
+  const bodyY = headerH + 14;
+  ctx.fillStyle = C.card;
+  shareRoundRect(ctx, PAD-16, bodyY, contentW+32, H - bodyY - 60, 18);
+  ctx.fill();
+  ctx.strokeStyle = C.line;
+  ctx.lineWidth = 1;
+  shareRoundRect(ctx, PAD-16, bodyY, contentW+32, H - bodyY - 60, 18);
+  ctx.stroke();
+
+  let cy = bodyY + 40;
+  ctx.fillStyle = C.ink;
+  ctx.font = "600 26px 'IBM Plex Sans KR', sans-serif";
+  qLines.forEach(line=>{ ctx.fillText(line, PAD, cy); cy += 34; });
+  cy += 6;
+
+  if(withAnswer && ansLines.length){
+    const ansBoxH = 44 + ansLines.length*28 + 24;
+    ctx.fillStyle = C.tealSoft;
+    shareRoundRect(ctx, PAD, cy, contentW, ansBoxH, 10);
+    ctx.fill();
+    ctx.fillStyle = C.teal;
+    ctx.font = "700 17px 'IBM Plex Sans KR', sans-serif";
+    ctx.fillText("✅ 모범답안", PAD+16, cy+30);
+    ctx.fillStyle = C.ink;
+    ctx.font = "400 21px 'IBM Plex Sans KR', sans-serif";
+    let ay = cy + 62;
+    ansLines.forEach(line=>{ ctx.fillText(line, PAD+16, ay); ay += 28; });
+    cy += ansBoxH + 8;
+  }
+
+  ctx.fillStyle = C.muted;
+  ctx.font = "400 14px 'IBM Plex Sans KR', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(`건축기사 실기 필답노트 · Ver.${typeof APP_VERSION!=="undefined"?APP_VERSION:""}`, W/2, H-28);
+  ctx.textAlign = "left";
+
+  return canvas;
+}
+async function copyImageToClipboard(blob){
+  if(!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem)) return false;
+  try{
+    await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
+    return true;
+  }catch(e){
+    console.warn("이미지 클립보드 복사 실패:", e);
+    return false;
+  }
+}
+async function shareQuestionImage(q, withAnswer){
+  toast("이미지를 만들고 있어요...");
+  let dataUrl, blob;
+  try{
+    const canvas = await buildQuestionShareCanvas(q, withAnswer);
+    dataUrl = canvas.toDataURL("image/png");
+    blob = await (await fetch(dataUrl)).blob();
+  }catch(err){
+    console.error(err);
+    toast("이미지 생성 중 오류가 발생했어요");
+    return;
+  }
+  const fname = `건축기사실기_${q.id}_${withAnswer?"정답포함":"문제"}.png`;
+
+  const copied = await copyImageToClipboard(blob);
+  if(copied){
+    showCopyConfirm("image");
+    return;
+  }
+  showShareResultModal({kind:"image", dataUrl, fname});
+}
+async function shareQuestionText(q, withAnswer){
+  const text = buildShareText(q, withAnswer);
+  const ok = await copyTextRobust(text);
+  if(ok){
+    showCopyConfirm("text");
+  } else {
+    showShareResultModal({kind:"text", dataUrl:text, fname:null});
+  }
+}
+function showCopyConfirm(kind){
+  const isImg = kind === "image";
+  document.querySelectorAll(".modal-overlay").forEach(o=>o.remove());
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box copy-confirm-box">
+      <div class="copy-confirm-icon">✅</div>
+      <h3>${isImg ? "이미지가 복사됐어요" : "텍스트가 복사됐어요"}</h3>
+      <p style="font-size:0.85rem;color:var(--muted);margin:4px 0 16px;">카카오톡 등 채팅창에 붙여넣기(Ctrl/⌘+V) 하면 바로 보낼 수 있어요.</p>
+      <button type="button" class="btn primary" id="copyConfirmOk" style="width:100%;">확인</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.querySelector("#copyConfirmOk").addEventListener("click", close);
+  overlay.addEventListener("click", e=>{ if(e.target===overlay) close(); });
+  setTimeout(close, 3200);
+}
+function showShareResultModal(opt){
+  const isImg = opt.kind === "image";
+  document.querySelectorAll(".modal-overlay").forEach(o=>o.remove());
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <span class="close-x">✕</span>
+      <h3>${isImg ? "🖼️ 공유 카드가 만들어졌어요" : "📄 공유 텍스트가 만들어졌어요"}</h3>
+      ${isImg
+        ? `<div class="share-preview"><img src="${opt.dataUrl}" alt="공유 카드 미리보기"></div>`
+        : `<div class="share-text-preview">${escapeHtml(opt.dataUrl)}</div>`}
+      <p style="font-size:0.85rem;color:var(--muted);line-height:1.5;">${isImg
+        ? "아래 버튼으로 이미지를 저장한 뒤, 카카오톡 채팅방에서 사진 첨부(📎)로 방금 저장한 이미지를 선택해 보내주세요. 저장이 안 되면 위 이미지를 길게 눌러 저장할 수 있어요."
+        : "아래 버튼으로 텍스트를 복사한 뒤, 카카오톡 채팅창에 붙여넣기(길게 눌러 붙여넣기) 해주세요."}</p>
+      <div class="btn-row">
+        ${isImg
+          ? `<button class="btn ghost" id="shareOpenBtn">새 탭에서 열기</button><button class="btn primary" id="shareDownloadBtn">이미지 저장</button>`
+          : `<button class="btn primary" id="shareCopyBtn">텍스트 복사하기</button>`}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.querySelector(".close-x").addEventListener("click", close);
+  overlay.addEventListener("click", e=>{ if(e.target===overlay) close(); });
+  if(isImg){
+    overlay.querySelector("#shareOpenBtn").addEventListener("click", ()=>{
+      const win = window.open("", "_blank");
+      if(!win){ toast("새 탭 열기가 차단됐어요. 브라우저의 팝업 차단을 해제해주세요."); return; }
+      win.document.write(`<!doctype html><title>${escapeHtml(opt.fname||"공유 카드")}</title><body style="margin:0;background:#222;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${opt.dataUrl}" style="max-width:100%;height:auto;display:block;"></body>`);
+      win.document.close();
+    });
+    overlay.querySelector("#shareDownloadBtn").addEventListener("click", async ()=>{
+      try{
+        const blob = await (await fetch(opt.dataUrl)).blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = opt.fname;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=> URL.revokeObjectURL(url), 4000);
+        toast("이미지를 저장했어요");
+      }catch(e){
+        console.error(e);
+        toast("저장에 실패했어요. 위 이미지를 길게 눌러 저장해보세요.");
+      }
+    });
+  } else {
+    overlay.querySelector("#shareCopyBtn").addEventListener("click", async ()=>{
+      const ok = await copyTextRobust(opt.dataUrl);
+      toast(ok ? "텍스트를 복사했어요" : "복사에 실패했어요. 텍스트를 직접 선택해 복사해주세요.");
+    });
+  }
+}
+
+/* ============ 중복 출제 상세보기: 카드 상단 별점(★★★) 배지를 탭하면 연도별 출제 이력을 모두 보여준다 ============ */
+function openDuplicateModal(id){
+  document.querySelectorAll(".modal-overlay").forEach(o=>o.remove());
+  if("speechSynthesis" in window) speechSynthesis.cancel();
+  const data = getData();
+  const multiRound = datasetHasMultiRound(data);
+  const groups = buildCombinedGroups(data);
+  const g = groups.find(gr=> gr.some(qq=>qq.id===id));
+  const list = (g||[]).slice().sort((a,b)=>{
+    if(a.year!==b.year) return b.year-a.year;
+    return (b.round||1)-(a.round||1);
+  });
+  const itemsHtml = list.map(c=>{
+    const label = yearRoundLabel(c, multiRound) + (c.no?`-${c.no}`:"");
+    return `
+      <div class="tagmodal-item">
+        <div class="tagmodal-meta">${label} · ${c.year}년${c.round?" "+c.round+"회":""} · ${c.unitMajor}${c.unitMinor ? " · "+c.unitMinor : ""}${c.points?` · ${c.points}점`:""}${c.id===id?" · (현재 문제)":""}</div>
+        ${renderTextWithImages(c.question, c.images, c.answer)}
+        <div class="answer-reveal qa-box" style="margin-top:32px;"><span class="qa-label answer">정답</span>${inlineImagesOnly(c.answer, c.images)}</div>
+      </div>`;
+  }).join("");
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-box tagmodal-box">
+      <span class="close-x">✕</span>
+      <div class="card-head" style="padding-right:24px;">
+        <h3>★ 중복 출제 이력 · ${list.length}건</h3>
+      </div>
+      <div class="tagmodal-list">${itemsHtml || '<div class="empty-note">중복 출제 이력이 없습니다.</div>'}</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".close-x").addEventListener("click", ()=> overlay.remove());
+  let mouseDownOnDupModal = false;
+  overlay.addEventListener("mousedown", e=>{ mouseDownOnDupModal = (e.target===overlay); });
+  overlay.addEventListener("click", (e)=>{ if(e.target===overlay && mouseDownOnDupModal) overlay.remove(); });
 }
 
 function revealAnswer(q){
