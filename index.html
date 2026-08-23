@@ -813,8 +813,10 @@
   .tagmodal-meta{font-size:0.78rem;color:var(--muted);margin-bottom:6px;font-weight:600;}
 
 /* ============ AI 해설 물어보기 / 문제 공유하기 모달 (방수산업기사 CBT 앱에서 이식) ============ */
-.ai-svc-btn{display:flex;align-items:center;gap:10px;}
-.ai-svc-btn svg{flex-shrink:0;border-radius:50%;}
+.ai-svc-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;}
+.ai-svc-btn .ai-svc-head{display:flex;align-items:center;gap:10px;}
+.ai-svc-btn .ai-svc-head svg{flex-shrink:0;border-radius:50%;}
+.ai-svc-btn small{padding-left:28px;}
 .optA-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
 .optA-label{width:34px;flex-shrink:0;font-size:0.74rem;font-weight:800;color:var(--ink);}
 .optA-chips{display:flex;gap:6px;flex:1;}
@@ -837,10 +839,10 @@
 <div class="app-shell">
 <header class="top compact">
   <div class="wrap">
-    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 2026.08.22_21.37</span></div>
+    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 2026.08.23_14.06</span></div>
     <div class="meta-row" id="metaRow" style="display: none;">
       <div class="meta-line" id="headerMeta" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <span id="headerMetaLeft">Ver. 2026.08.22_21.37</span>
+        <span id="headerMetaLeft">Ver. 2026.08.23_14.06</span>
         <span id="headerMetaRight">2004–2026 (1792문항)</span>
       </div>
       <button type="button" class="install-btn" id="installBtn">📲 앱 설치</button>
@@ -986,7 +988,7 @@
    [2] 완성본을 내보낼 때 파일명도 반드시 타임스탬프를 포함해야 한다.
        형식: smc_건축기사_yyyymmdd_hhmm.html (계정 아이디 smc + 자격증명 + 날짜 + 시분)
        두 규칙 다 매번 빠뜨리기 쉬우니 파일을 건드릴 때마다 이 주석부터 확인할 것. */
-const APP_VERSION = "2026.08.22_21.37";
+const APP_VERSION = "2026.08.23_14.06";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1588,12 +1590,20 @@ function isQuickRecall(q){
   const plain = ans.replace(/[\s\n]/g,"");
   return plain.length <= 60;
 }
+/* 진짜 "신규"(한 번도 채점된 적 없는) 문제 판별.
+   연습/음성 모드에서 채점 없이 넘긴(passive) 기록만 있는 문제는, 아직 실제로
+   회독(채점)된 적이 없으므로 계속 "신규" 풀에 남겨 다음 회독에서도 다시 만나게 한다. */
+function isUngraded(qid){
+  const p = store.progress[qid];
+  if(!p) return true;
+  return !(p.history && p.history.some(h=> typeof h.score === "number"));
+}
 function buildDailyReviewQueue(){
   const goal = dailyReviewGoal();
   const mix = reviewMix();
   const wrongPool = getData().filter(q=> store.wrong[q.id]);
   const srsPool = getSRSQueue();
-  const newPool = getData().filter(q=> !store.progress[q.id]);
+  const newPool = getData().filter(q=> isUngraded(q.id));
   if(!goal){
     // 목표(D-day·회독수) 미설정 시: 기존처럼 오답→SRS→신규 우선순위로 전부 반환
     return {list:[...wrongPool, ...srsPool, ...newPool], counts:{wrong:wrongPool.length, srs:srsPool.length, new:newPool.length}, goal:null, wrongTotal:wrongPool.length, srsTotal:srsPool.length, newTotal:newPool.length};
@@ -1749,9 +1759,13 @@ function dailyStats(days){
     p.history.forEach(h=>{
       if(!h || !h.date) return;
       if(!modes.includes(historyModeOf(h))) return;
-      if(!map[h.date]) map[h.date] = {count:0, correct:0};
+      if(!map[h.date]) map[h.date] = {count:0, correct:0, graded:0};
       map[h.date].count++;
-      if(h.score>=75) map[h.date].correct++;
+      // 채점 없이 넘긴(passive) 항목은 학습 카운트에는 포함하되, 정답률 계산에서는 제외한다.
+      if(typeof h.score === "number"){
+        map[h.date].graded++;
+        if(h.score>=75) map[h.date].correct++;
+      }
     });
   });
   const today = new Date();
@@ -1760,8 +1774,8 @@ function dailyStats(days){
     const d = new Date(today);
     d.setDate(d.getDate()-i);
     const key = d.toISOString().slice(0,10);
-    const rec = map[key] || {count:0, correct:0};
-    const pct = rec.count ? Math.round((rec.correct/rec.count)*100) : null;
+    const rec = map[key] || {count:0, correct:0, graded:0};
+    const pct = rec.graded ? Math.round((rec.correct/rec.graded)*100) : null;
     result.push({date:key, count:rec.count, pct, isToday: i===0});
   }
   return result;
@@ -2873,6 +2887,7 @@ function startQueue(list, mode, label, returnView){
   state.mode = mode;
   state.modeLabel = label || "";
   state.view = "card";
+  state.passiveCounted = new Set(); // 연습/음성 모드에서 채점 없이 넘긴 카드의 중복 카운트 방지용(세트별 초기화)
   renderCard();
 }
 
@@ -2902,11 +2917,49 @@ function saveQueueSession(){
 function questionAccuracy(qid){
   const p = store.progress[qid];
   if(!p || !p.history || !p.history.length) return null;
-  const correct = p.history.filter(h=>h.score>=75).length;
-  return Math.round((correct/p.history.length)*100);
+  // 연습/음성 모드에서 채점 없이 넘긴 카드(passive:true, score 없음)는 정답률 계산에서 제외한다.
+  const graded = p.history.filter(h=>typeof h.score === "number");
+  if(!graded.length) return null;
+  const correct = graded.filter(h=>h.score>=75).length;
+  return Math.round((correct/graded.length)*100);
+}
+
+/* ============ 연습/음성 모드 "채점 없이 넘긴" 카드 처리 ============
+   연습·음성 모드에서는 정답/오답 버튼을 누르지 않고 카드를 넘겨도(다음 카드로 이동·세트 완료)
+   그 문제를 "학습한 것"으로 간주해 오늘 학습 카운트·회독 진행에는 포함시킨다.
+   단, 오답노트 등재나 SRS(박스/복습주기) 진행은 사용자가 실제로 정답 O/오답 X를 눌러
+   명시적으로 채점했을 때(recordResult)에만 이뤄지도록, 여기서는 history에 score 없는
+   "passive" 항목만 남기고 store.wrong·p.box·p.next는 건드리지 않는다. */
+function recordPassiveView(qid, mode){
+  const p = store.progress[qid] || {box:0, next:null, history:[]};
+  p.history.push({date:todayStr(), mode: mode || state.mode || "srs", passive:true});
+  store.progress[qid] = p;
+
+  const last = store.streak.last;
+  const t = todayStr();
+  if(last !== t){
+    if(last === addDays(t,-1)) store.streak.count += 1;
+    else store.streak.count = 1;
+    store.streak.last = t;
+  }
+  saveStore();
+}
+/* 현재 보고 있던 카드가 채점되지 않은 채 넘어가려 할 때, 연습/음성 모드라면 1회만
+   passive 기록을 남긴다(같은 세트 안에서 앞뒤로 왔다갔다 해도 문제당 중복 카운트 방지). */
+function maybeCountPassiveView(){
+  if(state.view !== "card") return;
+  if(state.studyMode !== "practice" && state.studyMode !== "voice") return;
+  if(state.cardGraded) return;
+  const q = state.queue[state.idx];
+  if(!q) return;
+  if(!state.passiveCounted) state.passiveCounted = new Set();
+  if(state.passiveCounted.has(q.id)) return;
+  state.passiveCounted.add(q.id);
+  recordPassiveView(q.id, state.mode);
 }
 
 function renderCard(){
+  state.cardGraded = false; // 새 카드로 넘어오면 "이 카드는 아직 채점 안 됨" 상태로 초기화
   const studyNavBarEl0 = document.getElementById("studyNavBar");
   if(studyNavBarEl0) studyNavBarEl0.style.display = "block";
   const q = withEdits(state.queue[state.idx]);
@@ -3037,7 +3090,7 @@ function renderCard(){
       if(t.tagName === "IMG"){ openImageZoom(t.src); return; }
       revealAnswer(q);
     },
-    ()=>{ if(state.idx < state.queue.length-1) goToCard(state.idx+1); else { recordQueueCompletion(); saveQueueSession(); snapBack(document.getElementById("cardBox")); alert("이번 세트 학습을 완료했습니다!"); setView(state.returnView || (state.mode==="unitMinor" ? "unit" : (["unit","year","freq"].includes(state.mode) ? state.mode : "home"))); } },
+    ()=>{ if(state.idx < state.queue.length-1) goToCard(state.idx+1); else { maybeCountPassiveView(); recordQueueCompletion(); saveQueueSession(); snapBack(document.getElementById("cardBox")); alert("이번 세트 학습을 완료했습니다!"); setView(state.returnView || (state.mode==="unitMinor" ? "unit" : (["unit","year","freq"].includes(state.mode) ? state.mode : "home"))); } },
     ()=>{ if(state.idx > 0) goToCard(state.idx-1); else snapBack(document.getElementById("cardBox")); }
   );
   playCardEnterAnimation("cardBox");
@@ -3259,6 +3312,7 @@ function advanceVoiceStudy(){
   if(state.idx < state.queue.length - 1){
     goToCard(state.idx+1);
   } else {
+    maybeCountPassiveView();
     recordQueueCompletion();
     saveQueueSession();
     releaseWakeLockNow();
@@ -3336,7 +3390,7 @@ function openAiHelpModal(q){
       <span class="close-x">✕</span>
       <h3>🤖 AI 해설로 물어보기</h3>
       <div class="mode-choice-row">
-        ${AI_ASK_SERVICES.map(s=>`<button type="button" class="btn ghost ai-svc-btn" data-ai-svc-modal="${s.key}">${s.icon}<span>${s.label}에게 해설 요청<small>문제와 모범답안을 담아 ${svcLabel[s.key]||"새 대화창을"} 엽니다</small></span></button>`).join("")}
+        ${AI_ASK_SERVICES.map(s=>`<button type="button" class="btn ghost ai-svc-btn" data-ai-svc-modal="${s.key}"><span class="ai-svc-head">${s.icon}<span>${s.label}에게 해설 요청</span></span><small>문제와 모범답안을 담아 ${svcLabel[s.key]||"새 대화창을"} 엽니다</small></button>`).join("")}
         <a class="btn ghost" href="${googleAiUrl}" target="_blank" rel="noopener" style="text-decoration:none;display:block;">🔎 Google AI 해설 보기<small>Google AI 모드 검색결과로 엽니다</small></a>
       </div>
       <div style="margin-top:10px;font-size:0.78rem;color:var(--muted);">※ 로그인 상태나 브라우저에 따라 프롬프트가 자동으로 채워지지 않을 수 있어요. 그 경우 붙여넣기 해주세요.</div>
@@ -3442,6 +3496,9 @@ function updateVoiceControlsUI(){
 
 function goToCard(newIdx){
   if(newIdx < 0) return;
+  // 앞으로 넘어갈 때(다음 카드로 이동/세트 완료)만 현재 카드를 "학습함"으로 카운트한다.
+  // 뒤로 가기(이전 카드 보기)는 아직 학습이 끝난 것으로 보지 않으므로 카운트하지 않는다.
+  if(newIdx > state.idx) maybeCountPassiveView();
   if(newIdx > state.queue.length-1){
     recordQueueCompletion(); saveQueueSession();
     alert("이번 세트 학습을 완료했습니다!");
@@ -3554,6 +3611,12 @@ function buildShareText(q, withAnswer){
     lines.push("[모범답안]");
     lines.push(plainTextOf(q.answer));
   }
+  const hasImgInQuestion = /\{\{img:\d+\}\}/.test(q.question||"");
+  const hasImgInAnswer = withAnswer && /\{\{img:\d+\}\}/.test(q.answer||"");
+  if(hasImgInQuestion || hasImgInAnswer){
+    lines.push("");
+    lines.push("※ 이 문제에는 도면·그림이 포함되어 있어 텍스트만으로는 풀 수 없어요. 공유 형식을 '이미지'로 선택해주세요.");
+  }
   return lines.join("\n");
 }
 
@@ -3596,33 +3659,211 @@ function shareRoundRect(ctx, x, y, w, h, r){
   ctx.arcTo(x, y, x + r.tl, y, r.tl);
   ctx.closePath();
 }
+function shareLoadImage(src){
+  return new Promise((resolve)=>{
+    if(!src){ resolve(null); return; }
+    const img = new Image();
+    img.onload = ()=> resolve(img);
+    img.onerror = ()=> resolve(null);
+    img.src = src;
+  });
+}
+/* {{img:N}} 토큰 기준으로만 나눈다. usedIdx는 상위 호출에서 공유하는 Set(재귀·박스 안팎을 모두 합산). */
+async function shareParseInline(text, images, usedIdx){
+  const segments = [];
+  const parts = String(text||"").split(/(\{\{img:\d+\}\})/g);
+  for(const part of parts){
+    const m = part.match(/^\{\{img:(\d+)\}\}$/);
+    if(m){
+      const idx = Number(m[1]);
+      usedIdx.add(idx);
+      const src = images && images[idx]!=null ? imgSrc(images[idx]) : null;
+      if(src){
+        const img = await shareLoadImage(src);
+        if(img) segments.push({type:"img", img});
+      }
+    } else if(part){
+      segments.push({type:"text", value: part});
+    }
+  }
+  return segments;
+}
+/* {{BOX}}...{{/BOX}} 구간은 온스크린(.q-inline-box)과 같은 점선 박스로 표시할 수 있도록 중첩 구조로 보존하고,
+   그 안팎의 {{img:N}} 자리에는 실제 이미지를 로드해 순서를 보존한 세그먼트 트리로 바꾼다.
+   (문제 속 도면·그림이 "[이미지]" 문구로만 남거나 박스 강조가 사라져 공유받은 사람이 헷갈리는 걸 막기 위함) */
+async function shareParseSegments(text, images){
+  const usedIdx = new Set();
+  const raw = String(text||"");
+  const boxRe = /\{\{BOX\}\}([\s\S]*?)\{\{\/BOX\}\}/g;
+  const segments = [];
+  let lastIndex = 0, m;
+  while((m = boxRe.exec(raw)) !== null){
+    if(m.index > lastIndex){
+      segments.push(...(await shareParseInline(raw.slice(lastIndex, m.index), images, usedIdx)));
+    }
+    const items = await shareParseInline(m[1], images, usedIdx);
+    if(items.length) segments.push({type:"box", items});
+    lastIndex = boxRe.lastIndex;
+  }
+  if(lastIndex < raw.length){
+    segments.push(...(await shareParseInline(raw.slice(lastIndex), images, usedIdx)));
+  }
+  return {segments, usedIdx};
+}
+function shareImgDrawSize(img, maxW, maxH){
+  const natW = img.naturalWidth || img.width || 1;
+  const natH = img.naturalHeight || img.height || 1;
+  let w = Math.min(natW, maxW);
+  let h = w * (natH / natW);
+  if(h > maxH){ h = maxH; w = h * (natW / natH); }
+  return {w, h};
+}
+/* 세그먼트 트리를 실제 그릴 치수(줄바꿈/이미지 크기/박스 안쪽 여백)로 미리 계산한다.
+   모든 항목은 h(자기 높이)와 gap(다음 항목과의 간격)을 갖도록 통일해서, 상위/재귀 어디서든
+   같은 방식으로 누적 높이를 셀 수 있게 한다. */
+function shareLayoutSegments(mctx, segments, contentW, textFont, lineH, maxImgH){
+  const boxPad = 10;
+  return segments.map(seg=>{
+    if(seg.type === "text"){
+      mctx.font = textFont;
+      const lines = shareCanvasWrapText(mctx, seg.value, contentW);
+      return {type:"text", lines, lineH, font:textFont, h: lines.length*lineH, gap:0};
+    }
+    if(seg.type === "img"){
+      const {w,h} = shareImgDrawSize(seg.img, contentW, maxImgH);
+      return {type:"img", img:seg.img, w, h, gap:14};
+    }
+    const innerW = contentW - boxPad*2;
+    const items = shareLayoutSegments(mctx, seg.items, innerW, textFont, lineH, maxImgH);
+    return {type:"box", items, innerW, h: shareSegmentsHeight(items) + boxPad*2, gap:14, pad:boxPad};
+  });
+}
+function shareSegmentsHeight(items){
+  let h = 0;
+  items.forEach(it=> h += it.h + it.gap);
+  if(items.length) h -= items[items.length-1].gap;
+  return h;
+}
+/* 레이아웃된 세그먼트를 실제로 캔버스에 그린다. 박스 세그먼트는 점선 테두리+연한 배경으로
+   앱 화면의 .q-inline-box(문제 속 {{BOX}} 강조)와 같은 느낌을 재현한다. */
+function shareDrawSegments(ctx, items, x, yStart, contentW, C){
+  let y = yStart;
+  items.forEach(item=>{
+    if(item.type === "text"){
+      ctx.font = item.font;
+      ctx.fillStyle = C.ink;
+      item.lines.forEach(line=>{ ctx.fillText(line, x, y); y += item.lineH; });
+    } else if(item.type === "img"){
+      const dx = x + (contentW - item.w)/2;
+      ctx.save();
+      shareRoundRect(ctx, dx, y, item.w, item.h, 8);
+      ctx.clip();
+      ctx.drawImage(item.img, dx, y, item.w, item.h);
+      ctx.restore();
+      ctx.strokeStyle = C.line;
+      ctx.lineWidth = 1;
+      shareRoundRect(ctx, dx, y, item.w, item.h, 8);
+      ctx.stroke();
+      y += item.h + item.gap;
+    } else if(item.type === "box"){
+      ctx.fillStyle = C.amberSoft;
+      shareRoundRect(ctx, x, y, contentW, item.h, 8);
+      ctx.fill();
+      ctx.save();
+      ctx.setLineDash([5,4]);
+      ctx.strokeStyle = C.amber;
+      ctx.lineWidth = 1.5;
+      shareRoundRect(ctx, x, y, contentW, item.h, 8);
+      ctx.stroke();
+      ctx.restore();
+      shareDrawSegments(ctx, item.items, x + item.pad, y + item.pad, item.innerW, C);
+      y += item.h + item.gap;
+    }
+  });
+}
+/* 공유 카드용 웹폰트(IBM Plex Sans KR)를 실제로 사용하기 전에 로드 완료를 기다린다.
+   구글 폰트는 <link display=swap>으로 비동기 로드되기 때문에, 캔버스 텍스트를 측정(measureText)한
+   시점과 실제로 그리는(fillText) 시점 사이에 폰트가 막 전환되면 줄바꿈 계산이 어긋나
+   텍스트가 박스 밖으로 삐져나오거나 박스 테두리가 잘려 보이는 문제가 생길 수 있다.
+   한 번 로드되면 이후에는 캐시돼서 매번 네트워크를 타지 않는다. */
+let _shareFontsReadyPromise = null;
+function shareEnsureFontsReady(){
+  if(_shareFontsReadyPromise) return _shareFontsReadyPromise;
+  _shareFontsReadyPromise = (async ()=>{
+    try{
+      if(document.fonts && document.fonts.load){
+        await Promise.all([
+          document.fonts.load("600 26px 'IBM Plex Sans KR'"),
+          document.fonts.load("400 21px 'IBM Plex Sans KR'"),
+          document.fonts.load("700 22px 'IBM Plex Sans KR'"),
+          document.fonts.load("400 15px 'IBM Plex Sans KR'"),
+          document.fonts.load("700 17px 'IBM Plex Sans KR'"),
+          document.fonts.load("400 14px 'IBM Plex Sans KR'")
+        ]);
+      }
+      if(document.fonts && document.fonts.ready){
+        await document.fonts.ready;
+      }
+    }catch(e){
+      console.warn("공유 카드 폰트 로드 실패(폴백 폰트로 계속 진행):", e);
+    }
+  })();
+  return _shareFontsReadyPromise;
+}
 async function buildQuestionShareCanvas(q, withAnswer){
+  await shareEnsureFontsReady();
   const SCALE = 2;
   const W = 720;
   const PAD = 32;
   const contentW = W - PAD*2;
+  const MAX_IMG_H = 360;
   const C = SHARE_COLORS;
   const multiRound = datasetHasMultiRound(getData());
   const label = yearRoundLabel(q, multiRound) + (q.no?`-${q.no}`:"");
+  const images = q.images || [];
 
   const measureCanvas = document.createElement("canvas");
   const mctx = measureCanvas.getContext("2d");
 
-  const qPlain = plainTextOf(q.question);
-  mctx.font = "600 26px 'IBM Plex Sans KR', sans-serif";
-  const qLines = shareCanvasWrapText(mctx, `${label}. ${qPlain}`, contentW - 8);
-
-  let ansLines = [];
-  if(withAnswer && q.answer){
-    mctx.font = "400 21px 'IBM Plex Sans KR', sans-serif";
-    ansLines = shareCanvasWrapText(mctx, plainTextOf(q.answer), contentW - 32);
+  // 정답 쪽에서 이미 쓰이는 이미지는 문제 쪽 "누락 이미지" 목록에서 제외한다 (기존 renderTextWithImages와 동일 원칙)
+  const usedInAnswer = new Set();
+  if(q.answer){
+    let rm, re = /\{\{img:(\d+)\}\}/g;
+    while((rm = re.exec(q.answer)) !== null) usedInAnswer.add(Number(rm[1]));
   }
+  const qParsed = await shareParseSegments(q.question, images);
+  const leftoverIdx = images.map((_,i)=>i).filter(i=>!qParsed.usedIdx.has(i) && !usedInAnswer.has(i));
+  for(const idx of leftoverIdx){
+    const src = imgSrc(images[idx]);
+    if(src){ const img = await shareLoadImage(src); if(img) qParsed.segments.push({type:"img", img}); }
+  }
+  // 문항 라벨(예: "22-2-24. ")을 최상위 첫 텍스트 조각 앞에 붙인다 (박스 안쪽 텍스트는 제외)
+  const firstTopText = qParsed.segments.find(s=>s.type==="text");
+  if(firstTopText) firstTopText.value = `${label}. ` + firstTopText.value;
+  else qParsed.segments.unshift({type:"text", value:`${label}. `});
+
+  let ansSegments = [];
+  if(withAnswer && q.answer){
+    const ansParsed = await shareParseSegments(q.answer, images);
+    ansSegments = ansParsed.segments;
+  }
+
+  const qFont = "600 26px 'IBM Plex Sans KR', sans-serif";
+  const qLineH = 34;
+  const ansFont = "400 21px 'IBM Plex Sans KR', sans-serif";
+  const ansLineH = 28;
+
+  const laidOutQ = shareLayoutSegments(mctx, qParsed.segments, contentW - 8, qFont, qLineH, MAX_IMG_H);
+  const laidOutAns = shareLayoutSegments(mctx, ansSegments, contentW - 32, ansFont, ansLineH, MAX_IMG_H);
 
   const headerH = 86;
   let y = headerH + 28;
-  y += qLines.length * 34 + 14;
-  if(withAnswer && ansLines.length){
-    y += 44 + ansLines.length * 28 + 24;
+  y += shareSegmentsHeight(laidOutQ);
+  y += 6;
+  let ansBoxH = 0;
+  if(withAnswer){
+    ansBoxH = 44 + shareSegmentsHeight(laidOutAns) + 24;
+    y += ansBoxH + 8;
   }
   y += 70;
 
@@ -3664,23 +3905,17 @@ async function buildQuestionShareCanvas(q, withAnswer){
   ctx.stroke();
 
   let cy = bodyY + 40;
-  ctx.fillStyle = C.ink;
-  ctx.font = "600 26px 'IBM Plex Sans KR', sans-serif";
-  qLines.forEach(line=>{ ctx.fillText(line, PAD, cy); cy += 34; });
-  cy += 6;
+  shareDrawSegments(ctx, laidOutQ, PAD, cy, contentW - 8, C);
+  cy += shareSegmentsHeight(laidOutQ) + 6;
 
-  if(withAnswer && ansLines.length){
-    const ansBoxH = 44 + ansLines.length*28 + 24;
+  if(withAnswer){
     ctx.fillStyle = C.tealSoft;
     shareRoundRect(ctx, PAD, cy, contentW, ansBoxH, 10);
     ctx.fill();
     ctx.fillStyle = C.teal;
     ctx.font = "700 17px 'IBM Plex Sans KR', sans-serif";
     ctx.fillText("✅ 모범답안", PAD+16, cy+30);
-    ctx.fillStyle = C.ink;
-    ctx.font = "400 21px 'IBM Plex Sans KR', sans-serif";
-    let ay = cy + 62;
-    ansLines.forEach(line=>{ ctx.fillText(line, PAD+16, ay); ay += 28; });
+    shareDrawSegments(ctx, laidOutAns, PAD+16, cy+62, contentW - 32, C);
     cy += ansBoxH + 8;
   }
 
@@ -3692,36 +3927,47 @@ async function buildQuestionShareCanvas(q, withAnswer){
 
   return canvas;
 }
-async function copyImageToClipboard(blob){
-  if(!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem)) return false;
-  try{
-    await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
-    return true;
-  }catch(e){
-    console.warn("이미지 클립보드 복사 실패:", e);
-    return false;
-  }
-}
+/* 이미지 공유: navigator.clipboard.write()를 클릭 이벤트 안에서 "즉시" 호출해야
+   브라우저가 이를 사용자 제스처로 인정해 별도 확인 없이 복사를 허용한다.
+   그런데 캔버스 생성(도면 이미지 로딩 등)은 비동기라 시간이 걸리므로, 실제 데이터는
+   나중에 채워지는 Promise로 넘기고(Clipboard API가 지원하는 지연 채움 패턴) write 호출
+   자체는 먼저 실행해 사용자 제스처를 놓치지 않게 한다. 이 처리가 없으면 그림이 있는
+   문제처럼 캔버스 생성이 조금이라도 오래 걸릴 때 클립보드 복사가 조용히 실패해서
+   "이미지 저장(미리보기)" 폴백으로 넘어가 버린다. */
 async function shareQuestionImage(q, withAnswer){
+  const fname = `건축기사실기_${q.id}_${withAnswer?"정답포함":"문제"}.png`;
+  const supportsClipboardImage = !!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem);
+
+  let resolveBlob, rejectBlob;
+  let writePromise = null;
+  if(supportsClipboardImage){
+    const blobPromise = new Promise((res,rej)=>{ resolveBlob=res; rejectBlob=rej; });
+    writePromise = navigator.clipboard.write([ new ClipboardItem({ "image/png": blobPromise }) ]).catch(e=>e);
+  }
+
   toast("이미지를 만들고 있어요...");
-  let dataUrl, blob;
+  let canvas, blob;
   try{
-    const canvas = await buildQuestionShareCanvas(q, withAnswer);
-    dataUrl = canvas.toDataURL("image/png");
-    blob = await (await fetch(dataUrl)).blob();
+    canvas = await buildQuestionShareCanvas(q, withAnswer);
+    blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
   }catch(err){
     console.error(err);
+    if(rejectBlob) rejectBlob(err);
     toast("이미지 생성 중 오류가 발생했어요");
     return;
   }
-  const fname = `건축기사실기_${q.id}_${withAnswer?"정답포함":"문제"}.png`;
 
-  const copied = await copyImageToClipboard(blob);
-  if(copied){
-    showCopyConfirm("image");
-    return;
+  if(supportsClipboardImage){
+    resolveBlob(blob);
+    const writeResult = await writePromise;
+    if(!(writeResult instanceof Error)){
+      showCopyConfirm("image");
+      return;
+    }
+    console.warn("이미지 클립보드 복사 실패:", writeResult);
   }
-  showShareResultModal({kind:"image", dataUrl, fname});
+  const dataUrl = canvas.toDataURL("image/png");
+  showShareResultModal({kind:"image", dataUrl, fname, blob});
 }
 async function shareQuestionText(q, withAnswer){
   const text = buildShareText(q, withAnswer);
@@ -3768,7 +4014,7 @@ function showShareResultModal(opt){
         : "아래 버튼으로 텍스트를 복사한 뒤, 카카오톡 채팅창에 붙여넣기(길게 눌러 붙여넣기) 해주세요."}</p>
       <div class="btn-row">
         ${isImg
-          ? `<button class="btn ghost" id="shareOpenBtn">새 탭에서 열기</button><button class="btn primary" id="shareDownloadBtn">이미지 저장</button>`
+          ? `<button class="btn ghost" id="shareOpenBtn">새 탭에서 열기</button><button class="btn ghost" id="shareDownloadBtn">이미지 저장</button>${opt.blob ? `<button class="btn primary" id="shareCopyImgBtn">📋 클립보드에 복사</button>` : ``}`
           : `<button class="btn primary" id="shareCopyBtn">텍스트 복사하기</button>`}
       </div>
     </div>
@@ -3786,7 +4032,7 @@ function showShareResultModal(opt){
     });
     overlay.querySelector("#shareDownloadBtn").addEventListener("click", async ()=>{
       try{
-        const blob = await (await fetch(opt.dataUrl)).blob();
+        const blob = opt.blob || await (await fetch(opt.dataUrl)).blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -3801,6 +4047,22 @@ function showShareResultModal(opt){
         toast("저장에 실패했어요. 위 이미지를 길게 눌러 저장해보세요.");
       }
     });
+    const copyImgBtn = overlay.querySelector("#shareCopyImgBtn");
+    if(copyImgBtn){
+      copyImgBtn.addEventListener("click", async ()=>{
+        if(!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem)){
+          toast("이 브라우저/앱에서는 이미지 클립보드 복사를 지원하지 않아요. 이미지 저장을 이용해주세요.");
+          return;
+        }
+        try{
+          await navigator.clipboard.write([ new ClipboardItem({ "image/png": opt.blob }) ]);
+          showCopyConfirm("image");
+        }catch(err){
+          console.warn("클립보드 복사 실패:", err);
+          toast("클립보드 복사에 실패했어요. 이미지 저장을 이용해주세요.");
+        }
+      });
+    }
   } else {
     overlay.querySelector("#shareCopyBtn").addEventListener("click", async ()=>{
       const ok = await copyTextRobust(opt.dataUrl);
@@ -3877,6 +4139,9 @@ function selfGrade(q, isCorrect){
   if(navCorrectBtn.disabled) return; // 아직 정답을 보지 않았거나 이미 채점됨 - 중복 클릭 방지
   navCorrectBtn.disabled = true;
   navWrongBtn.disabled = true;
+  state.cardGraded = true; // 명시적으로 채점됨 → 카드 전환 시 별도 passive 기록을 남기지 않음
+  if(!state.passiveCounted) state.passiveCounted = new Set();
+  state.passiveCounted.add(q.id);
 
   const score = isCorrect ? 100 : 0;
   recordResult(q.id, score);
