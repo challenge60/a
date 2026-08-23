@@ -518,6 +518,7 @@
   .pen-tool-btn.active{background:var(--amber-soft);border-color:var(--amber);color:#8a6420;}
   .pen-tool-btn:active{opacity:0.6;}
   .pen-width-wrap{display:flex;align-items:center;gap:4px;font-size:0.66rem;color:var(--muted);}
+  .pen-width-range{width:64px;accent-color:var(--amber);}
   .pen-color-swatches{display:flex;align-items:center;gap:5px;flex-shrink:0;}
   .pen-swatch{width:22px;height:22px;border-radius:50%;border:2px solid transparent;padding:0;cursor:pointer;flex-shrink:0;box-shadow:0 0 0 1px var(--line) inset;}
   .pen-swatch.active{border-color:var(--deep);}
@@ -867,10 +868,10 @@
 <div class="app-shell">
 <header class="top compact">
   <div class="wrap">
-    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 2026.08.23_16.43</span></div>
+    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 2026.08.23_16.53</span></div>
     <div class="meta-row" id="metaRow" style="display: none;">
       <div class="meta-line" id="headerMeta" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <span id="headerMetaLeft">Ver. 2026.08.23_16.43</span>
+        <span id="headerMetaLeft">Ver. 2026.08.23_16.53</span>
         <span id="headerMetaRight">2004–2026 (1792문항)</span>
       </div>
       <button type="button" class="install-btn" id="installBtn">📲 앱 설치</button>
@@ -1016,7 +1017,7 @@
    [2] 완성본을 내보낼 때 파일명도 반드시 타임스탬프를 포함해야 한다.
        형식: smc_건축기사_yyyymmdd_hhmm.html (계정 아이디 smc + 자격증명 + 날짜 + 시분)
        두 규칙 다 매번 빠뜨리기 쉬우니 파일을 건드릴 때마다 이 주석부터 확인할 것. */
-const APP_VERSION = "2026.08.23_16.43";
+const APP_VERSION = "2026.08.23_16.53";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1808,8 +1809,8 @@ const PEN_CANVAS_MAX_HEIGHT = 560;
 const PEN_ERASE_RADIUS = 0.03; // 정규화 좌표 기준 획 지우개 판정 반경
 /* 볼펜/형광펜 각각의 기본 굵기·불투명도·혼합모드와 어울리는 색상 팔레트 */
 const PEN_TOOL_PRESETS = {
-  ballpen: { width: 2.2, alpha: 1, blend: "source-over", colors: ["#1c2430","#2c5aa0","#a1503c","#2f6b57"] },
-  highlighter: { width: 15, alpha: 0.38, blend: "multiply", colors: ["#ffe066","#a8e063","#ff9ecb","#7fd1ff"] }
+  ballpen: { width: 2.2, widthMin: 1, widthMax: 6, widthStep: 0.5, alpha: 1, blend: "source-over", colors: ["#1c2430","#2c5aa0","#a1503c","#2f6b57"] },
+  highlighter: { width: 15, widthMin: 6, widthMax: 30, widthStep: 1, alpha: 0.38, blend: "multiply", colors: ["#ffe066","#a8e063","#ff9ecb","#7fd1ff"] }
 };
 function setupPenCanvas(q){
   const wrap = document.getElementById("penCanvasWrap");
@@ -1822,6 +1823,7 @@ function setupPenCanvas(q){
   let curStroke = null;
   let curTool = "ballpen"; // 'ballpen' | 'highlighter' | 'eraser'
   let curColor = PEN_TOOL_PRESETS.ballpen.colors[0];
+  let curWidth = PEN_TOOL_PRESETS.ballpen.width;
   let erasing = false;
 
   let cssW = 0, cssH = 0, ctx = null;
@@ -1913,7 +1915,7 @@ function setupPenCanvas(q){
       return;
     }
     const preset = PEN_TOOL_PRESETS[curTool] || PEN_TOOL_PRESETS.ballpen;
-    curStroke = { pts:[posOf(e)], w: preset.width, color: curColor, alpha: preset.alpha, blend: preset.blend };
+    curStroke = { pts:[posOf(e)], w: curWidth, color: curColor, alpha: preset.alpha, blend: preset.blend };
     strokes.push(curStroke);
   });
   canvas.addEventListener("pointermove", e=>{
@@ -1963,6 +1965,7 @@ function setupPenCanvas(q){
   const refreshToolBtns = ()=>{
     Object.entries(toolBtns).forEach(([name, btn])=>{ if(btn) btn.classList.toggle("active", curTool===name); });
     renderSwatches();
+    refreshWidthUI();
   };
   Object.entries(toolBtns).forEach(([name, btn])=>{
     if(!btn) return;
@@ -1971,9 +1974,25 @@ function setupPenCanvas(q){
       if(PEN_TOOL_PRESETS[name] && !PEN_TOOL_PRESETS[name].colors.includes(curColor)){
         curColor = PEN_TOOL_PRESETS[name].colors[0];
       }
+      if(PEN_TOOL_PRESETS[name]) curWidth = PEN_TOOL_PRESETS[name].width; // 도구를 바꾸면 그 도구의 기본 굵기로 초기화
       refreshToolBtns();
     };
   });
+  /* ---- 굵기 슬라이더: 도구별로 어울리는 범위(볼펜 1~6, 형광펜 6~30)로 바뀐다 ---- */
+  const widthWrap = document.getElementById("penWidthWrap");
+  const widthRange = document.getElementById("penWidthRange");
+  const refreshWidthUI = ()=>{
+    const preset = PEN_TOOL_PRESETS[curTool];
+    if(!preset){ if(widthWrap) widthWrap.style.display = "none"; return; } // 지우개는 굵기 없음
+    if(widthWrap) widthWrap.style.display = "flex";
+    if(widthRange){
+      widthRange.min = preset.widthMin;
+      widthRange.max = preset.widthMax;
+      widthRange.step = preset.widthStep;
+      widthRange.value = curWidth;
+    }
+  };
+  if(widthRange) widthRange.oninput = ()=>{ curWidth = parseFloat(widthRange.value) || PEN_TOOL_PRESETS[curTool].width; };
   refreshToolBtns();
 
   /* ---- 되돌리기: 가장 최근 획을 지운다 ---- */
@@ -3403,6 +3422,10 @@ function renderCard(){
             <button type="button" class="pen-tool-btn" id="penToolHighlighterBtn" data-tool="highlighter">🖍️ 형광펜</button>
             <button type="button" class="pen-tool-btn" id="penToolEraserBtn" data-tool="eraser">🧹 지우개</button>
             <div class="pen-color-swatches" id="penColorSwatches"></div>
+            <div class="pen-width-wrap" id="penWidthWrap">
+              <span>굵기</span>
+              <input type="range" class="pen-width-range" id="penWidthRange" min="1" max="6" step="0.5" value="2.2">
+            </div>
             <button type="button" class="pen-undo-btn" id="penUndoBtn">↩️ 되돌리기</button>
           </div>
           <div class="pen-canvas-wrap" id="penCanvasWrap" style="height:190px;">
