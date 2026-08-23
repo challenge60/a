@@ -182,8 +182,8 @@
 
   /* ---- 학습모드 선택 ---- */
   .mode-choice-row{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
-  .mode-choice-row .btn{width:100%;text-align:left;padding:14px;flex:none;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;height:auto;}
-  .mode-choice-row .btn small{display:block;font-weight:500;margin-top:3px;opacity:0.85;white-space:normal;}
+  .mode-choice-row .btn{width:100%;text-align:left;padding:14px;flex:none;}
+  .mode-choice-row .btn small{display:block;font-weight:500;margin-top:3px;opacity:0.85;}
   .tag.mode{background:#3a3a3a;color:#fff;}
   .mode-tag-btn{border:none;font-family:inherit;cursor:pointer;line-height:1.4;}
   .mode-tag-btn:active{opacity:0.75;}
@@ -1013,17 +1013,13 @@
 <script>
 /* ============ 앱 버전 & 출력 파일명 — 절대 누락 금지 ============
    [1] 화면 제목 옆 버전 표시: "버전 번호"가 아니라 "수정 시각 타임스탬프"를 버전처럼 쓴다.
-       형식: YYYY.MM.DD_HH:MM (24시간제, 예: 2026.08.24_05:46 = 2026년 8월 24일 5시 46분)
-       화면에는 "Ver. " 접두어를 붙여 "Ver. YYYY.MM.DD_HH:MM" 형태로 표시한다.
+       형식: YYYY.MM.DD_HH.MM (24시간제, 예: 2026.08.07_21.05 = 2026년 8월 7일 21시 05분)
+       화면에는 "Ver. " 접두어를 붙여 "Ver. YYYY.MM.DD_HH.MM" 형태로 표시한다.
        파일을 새로 수정/생성할 때마다 이 값을 그 시점의 타임스탬프로 반드시 교체할 것.
-   [2] 파일명 규칙 (2026.08.24 확정, 반드시 지킬 것):
-       - 엔진:   {자격증명}_엔진_{yyyymmdd_hhmm}.html   예) 건축기사_엔진_20260824_0546.html
-       - 데이터: {자격증명}_data_{yyyymmdd_hhmm}.json   예) 건축기사_data_20260824_0546.json
-       - 배포본: {자격증명}_배포본_{yyyymmdd_hhmm}.html 예) 방수산업기사_배포본_20260824_0546.html
-       세 가지 다 파일을 건드릴 때마다 이 주석부터 확인할 것.
-   [3] 엔진 수정 후에는 곧바로 배포본을 만들지 말고, 무엇을 고쳤는지 먼저 설명하고
-       사용자 컨펌을 받은 뒤에만 배포본(들)을 새로 만든다. */
-const APP_VERSION = "2026.08.24_05:47";
+   [2] 완성본을 내보낼 때 파일명도 반드시 타임스탬프를 포함해야 한다.
+       형식: smc_건축기사_yyyymmdd_hhmm.html (계정 아이디 smc + 자격증명 + 날짜 + 시분)
+       두 규칙 다 매번 빠뜨리기 쉬우니 파일을 건드릴 때마다 이 주석부터 확인할 것. */
+const APP_VERSION = "2026.08.23_16.43";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1126,7 +1122,17 @@ const APP_VERSION = "2026.08.24_05:47";
 
 /* ============ 자격증 설정 ============ */
 /* 새 자격증 앱을 만들 때는 이 EXAM_CONFIG와 아래 SAMPLE_DATA만 교체하면 됩니다. */
-const EXAM_CONFIG = {"markText": "건축기사", "subtitle": "실기 필답 노트", "titleText": "건축기사 실기 필답 노트", "openTalkUrl": "", "openTalkLabel": "건축기사 오픈톡", "openTalks": [{"label": "제작-방수산업기사 오픈톡", "url": "https://open.kakao.com/o/gDib1Gqf"}, {"label": "자료제공-건축기사&건설안전기사 스터디방", "url": "https://open.kakao.com/o/gWyJPRDh"}]};
+const EXAM_CONFIG = {
+  "markText": "건축기사",
+  "subtitle": "실기 필답 노트",
+  "titleText": "건축기사 실기 필답 노트",
+  "openTalkUrl": "",
+  "openTalkLabel": "건축기사 오픈톡",
+  "openTalks": [
+    { "label": "제작-방수산업기사 오픈톡", "url": "https://open.kakao.com/o/gDib1Gqf" },
+    { "label": "자료제공-건축기사&건설안전기사 스터디방", "url": "https://open.kakao.com/o/gWyJPRDh" }
+  ]
+};
 
 /* ============ 건축기사 실기 기출문제 데이터 (2011~2026, 1,281문항) ============ */
 const IMAGES = {};
@@ -1283,7 +1289,18 @@ function saveStore(){
 }
 
 /* ============ 단원 체계 (10 대단원 / 소단원) — 건축시공실무 교재 목차 기준 ============ */
-const UNIT_TAXONOMY = [{"major": "Ⅰ. 가설공사, 토공 및 흙막이공사", "minors": ["가설공사 : 일반사항", "가설공사 : 적산사항", "토공사 : 일반사항", "흙막이공사 : 일반사항", "토공사 : 적산사항"]}, {"major": "Ⅱ. 지정 및 기초공사", "minors": ["지정 및 기초공사 : 일반사항", "지정 및 기초공사 : 적산사항"]}, {"major": "Ⅲ. 철근콘크리트공사", "minors": ["철근공사", "거푸집공사", "콘크리트 재료", "콘크리트 시공, 각종 콘크리트", "콘크리트 시험 및 검사, 보수 및 보강", "철근콘크리트공사 : 적산사항", "RC 구조공학"]}, {"major": "Ⅳ. 강구조공사", "minors": ["강구조공사 : 일반사항", "강구조공사 : 접합", "강구조공사 : 적산사항", "강구조공학"]}, {"major": "Ⅴ. 조적·석·목공사", "minors": ["조적공사 : 일반사항", "석공사 및 목공사 : 일반사항", "조적·석·목공사 : 적산사항"]}, {"major": "Ⅵ. 미장·타일·방수·도장공사", "minors": ["미장공사 및 타일공사 : 일반사항", "방수 및 도장공사 : 일반사항", "미장·타일·방수·도장공사 : 적산사항"]}, {"major": "Ⅶ. 유리·창호·커튼월·수장 및 기타공사", "minors": ["유리 및 창호공사, 커튼월공사", "수장 및 그 밖의 공사"]}, {"major": "Ⅷ. 건축시공 총론", "minors": ["건축시공 개념 및 생산관리", "시공방식 및 도급", "입찰 및 계약, 공사관리"]}, {"major": "Ⅸ. 공정관리", "minors": ["PERT&CPM에 의한 Network 공정표", "최소비용에 의한 공기단축", "자원배당, 공정관리 관련 용어"]}, {"major": "Ⅹ. 구조역학", "minors": ["건축구조역학"]}];
+const UNIT_TAXONOMY = [
+  {major:"Ⅰ. 가설공사, 토공 및 흙막이공사", minors:["가설공사 : 일반사항","가설공사 : 적산사항","토공사 : 일반사항","흙막이공사 : 일반사항","토공사 : 적산사항"]},
+  {major:"Ⅱ. 지정 및 기초공사", minors:["지정 및 기초공사 : 일반사항","지정 및 기초공사 : 적산사항"]},
+  {major:"Ⅲ. 철근콘크리트공사", minors:["철근공사","거푸집공사","콘크리트 재료","콘크리트 시공, 각종 콘크리트","콘크리트 시험 및 검사, 보수 및 보강","철근콘크리트공사 : 적산사항","RC 구조공학"]},
+  {major:"Ⅳ. 강구조공사", minors:["강구조공사 : 일반사항","강구조공사 : 접합","강구조공사 : 적산사항","강구조공학"]},
+  {major:"Ⅴ. 조적·석·목공사", minors:["조적공사 : 일반사항","석공사 및 목공사 : 일반사항","조적·석·목공사 : 적산사항"]},
+  {major:"Ⅵ. 미장·타일·방수·도장공사", minors:["미장공사 및 타일공사 : 일반사항","방수 및 도장공사 : 일반사항","미장·타일·방수·도장공사 : 적산사항"]},
+  {major:"Ⅶ. 유리·창호·커튼월·수장 및 기타공사", minors:["유리 및 창호공사, 커튼월공사","수장 및 그 밖의 공사"]},
+  {major:"Ⅷ. 건축시공 총론", minors:["건축시공 개념 및 생산관리","시공방식 및 도급","입찰 및 계약, 공사관리"]},
+  {major:"Ⅸ. 공정관리", minors:["PERT&CPM에 의한 Network 공정표","최소비용에 의한 공기단축","자원배당, 공정관리 관련 용어"]},
+  {major:"Ⅹ. 구조역학", minors:["건축구조역학"]}
+];
 function unitMajorList(){ return UNIT_TAXONOMY.map(u=>u.major); }
 function unitMinorsOf(major){ const g = UNIT_TAXONOMY.find(u=>u.major===major); return g ? g.minors : []; }
 function majorOfMinor(minor){ const g = UNIT_TAXONOMY.find(u=>u.minors.includes(minor)); return g ? g.major : null; }
@@ -1790,7 +1807,7 @@ function normalizeStroke(s){
   if(Array.isArray(s)) return { pts: s.map(p=>p.slice()), w: 2.2, color: "#1c2430", alpha: 1, blend: "source-over" };
   return { pts: (s.pts||[]).map(p=>p.slice()), w: s.w || 2.2, color: s.color || "#1c2430", alpha: (typeof s.alpha === "number") ? s.alpha : 1, blend: s.blend || "source-over" };
 }
-const PEN_CANVAS_MIN_HEIGHT = 280;
+const PEN_CANVAS_MIN_HEIGHT = 190;
 const PEN_CANVAS_MAX_HEIGHT = 560;
 const PEN_ERASE_RADIUS = 0.03; // 정규화 좌표 기준 획 지우개 판정 반경
 /* 볼펜/형광펜 각각의 기본 굵기·불투명도·혼합모드와 어울리는 색상 팔레트 */
@@ -1798,10 +1815,6 @@ const PEN_TOOL_PRESETS = {
   ballpen: { width: 2.2, alpha: 1, blend: "source-over", colors: ["#1c2430","#2c5aa0","#a1503c","#2f6b57"] },
   highlighter: { width: 15, alpha: 0.38, blend: "multiply", colors: ["#ffe066","#a8e063","#ff9ecb","#7fd1ff"] }
 };
-/* 펜(스타일러스) 입력을 한 번이라도 받은 적이 있으면, 그 이후로는 세션 내내(문제를 넘겨도)
-   터치(손가락) 입력을 필기로 받지 않는다. setupPenCanvas가 문제마다 새로 호출되므로
-   이 값은 반드시 함수 밖(모듈 스코프)에 둬야 문제를 넘겨도 값이 유지된다. */
-let penEverUsedGlobal = false;
 function setupPracticeTabs(q){
   const tabBar = document.getElementById("practiceTabs");
   if(!tabBar) return;
@@ -2013,10 +2026,11 @@ function setupPenCanvas(q){
      PointerEvent.pointerType이 "pen"으로 들어오고, 손가락은 "touch"로 들어오므로
      이 값으로 구분한다. 펜이 한 번도 감지되지 않은 기기(터치만 있는 기기)에서는
      기존처럼 터치로 필기할 수 있도록, "펜 입력을 실제로 받은 적 있을 때만" 터치를 막는다. */
+  let penEverUsed = false;
   let activePenPointerId = null;
   canvas.addEventListener("pointerdown", e=>{
-    if(e.pointerType === "pen") { penEverUsedGlobal = true; activePenPointerId = e.pointerId; }
-    if(e.pointerType === "touch" && (penEverUsedGlobal || activePenPointerId !== null)) return; // 손바닥/손가락 등 터치 무시
+    if(e.pointerType === "pen") { penEverUsed = true; activePenPointerId = e.pointerId; }
+    if(e.pointerType === "touch" && (penEverUsed || activePenPointerId !== null)) return; // 손바닥 등 터치 무시
     e.preventDefault();
     if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
     if(curTool === "eraser"){
@@ -2029,7 +2043,7 @@ function setupPenCanvas(q){
     strokes.push(curStroke);
   });
   canvas.addEventListener("pointermove", e=>{
-    if(e.pointerType === "touch" && (penEverUsedGlobal || activePenPointerId !== null)) return; // 손바닥/손가락 등 터치 무시
+    if(e.pointerType === "touch" && (penEverUsed || activePenPointerId !== null)) return; // 손바닥 등 터치 무시
     if(erasing){ eraseAt(posOf(e)); return; }
     if(!curStroke) return;
     const p = posOf(e);
@@ -2043,7 +2057,7 @@ function setupPenCanvas(q){
     redraw();
   });
   const endStroke = (e)=>{
-    if(e && e.pointerType === "touch" && (penEverUsedGlobal || activePenPointerId !== null) && e.pointerId !== activePenPointerId) return;
+    if(e && e.pointerType === "touch" && (penEverUsed || activePenPointerId !== null) && e.pointerId !== activePenPointerId) return;
     if(e && e.pointerType === "pen" && e.pointerId === activePenPointerId) activePenPointerId = null;
     if(erasing){ erasing = false; persist(); return; }
     if(!curStroke) return;
@@ -3502,6 +3516,7 @@ function renderCard(){
       <div class="card-box" id="cardBox">
         ${renderTextWithImages(q.question, q.images, q.answer)}
         <div id="answerSlot"></div>
+        <textarea class="ans-input" id="ansInput" placeholder="여기에 답을 입력해보세요 (생략 가능)"></textarea>
         <div id="gradeSlot"></div>
         <div class="pen-pad practice-pad">
           <div class="practice-tabs" id="practiceTabs">
@@ -3526,7 +3541,7 @@ function renderCard(){
             <div class="pen-color-swatches" id="penColorSwatches"></div>
             <button type="button" class="pen-undo-btn" id="penUndoBtn">↩️ 되돌리기</button>
           </div>
-          <div class="pen-canvas-wrap" id="penCanvasWrap" style="height:280px;">
+          <div class="pen-canvas-wrap" id="penCanvasWrap" style="height:190px;">
             <canvas class="pen-canvas" id="penCanvas"></canvas>
             <div class="pen-resize-handle" id="penResizeHandle" title="드래그해서 필기장 높이 조절"></div>
           </div>
@@ -3620,6 +3635,8 @@ function renderCard(){
     });
     document.getElementById("voiceCancelBtn").addEventListener("click", cancelVoiceStudy);
   }
+  const ta = document.getElementById("ansInput");
+  ta.addEventListener("keydown", e=>{ if(e.key==="Enter" && e.ctrlKey) toggleAnswerVisibility(q); });
   attachCardGestures("cardBox",
     (e)=>{
       const t = e.target;
