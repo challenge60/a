@@ -500,6 +500,21 @@
   }
   textarea.ans-input:focus{outline:none;border-color:var(--teal);}
 
+  /* ---- 펜 필기 연습장: 태블릿 펜/손가락으로 자유롭게 낙서하듯 쓰는 공간.
+     즐겨찾기(★)한 문제만 필기가 기기에 계속 저장되고, 아닌 문제는 이번 학습 세션 동안만 유지된다. */
+  .pen-pad{margin-top:16px;border:1.5px dashed var(--line);border-radius:10px;padding:10px;background:#fffdf8;}
+  .pen-pad-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;}
+  .pen-pad-title{font-size:0.8rem;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:5px;flex:1;min-width:0;}
+  .pen-pad-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+  .pen-pad-hint{font-size:0.68rem;color:var(--muted);opacity:0.8;margin-bottom:6px;}
+  .pen-pad-hint.saved{color:var(--teal);opacity:1;font-weight:600;}
+  .pen-pad-remember{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:7px;padding:4px 9px;font-size:0.68rem;font-weight:600;cursor:pointer;flex-shrink:0;white-space:nowrap;}
+  .pen-pad-remember.active{background:var(--amber-soft);border-color:var(--amber);color:#8a6420;}
+  .pen-pad-remember:active{opacity:0.6;}
+  .pen-pad-clear{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:7px;padding:4px 10px;font-size:0.72rem;font-weight:600;cursor:pointer;flex-shrink:0;}
+  .pen-pad-clear:active{opacity:0.6;}
+  .pen-canvas{width:100%;height:190px;display:block;border-radius:8px;background:#fff;border:1px solid var(--line);touch-action:none;cursor:crosshair;}
+
   .btn-row{display:flex;gap:7px;margin-top:12px;}
   .btn{
     flex:1;padding:9px 6px;border-radius:9px;border:1.5px solid transparent;
@@ -839,10 +854,10 @@
 <div class="app-shell">
 <header class="top compact">
   <div class="wrap">
-    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 2026.08.23_14.06</span></div>
+    <div class="brand" style="display: none;"><span class="mark">건축기사</span><span class="sub">실기 필답 노트</span><span class="ver" id="appVerBadge">Ver. 2026.08.23_15.17</span></div>
     <div class="meta-row" id="metaRow" style="display: none;">
       <div class="meta-line" id="headerMeta" style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <span id="headerMetaLeft">Ver. 2026.08.23_14.06</span>
+        <span id="headerMetaLeft">Ver. 2026.08.23_15.17</span>
         <span id="headerMetaRight">2004–2026 (1792문항)</span>
       </div>
       <button type="button" class="install-btn" id="installBtn">📲 앱 설치</button>
@@ -988,7 +1003,7 @@
    [2] 완성본을 내보낼 때 파일명도 반드시 타임스탬프를 포함해야 한다.
        형식: smc_건축기사_yyyymmdd_hhmm.html (계정 아이디 smc + 자격증명 + 날짜 + 시분)
        두 규칙 다 매번 빠뜨리기 쉬우니 파일을 건드릴 때마다 이 주석부터 확인할 것. */
-const APP_VERSION = "2026.08.23_14.06";
+const APP_VERSION = "2026.08.23_15.17";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1174,11 +1189,13 @@ function loadStore(){
       if(!s.edits) s.edits = {};
       if(!("examConfig" in s)) s.examConfig = null;
       if(!s.setRepeats) s.setRepeats = {};
+      if(!s.penNotes) s.penNotes = {}; // "기억하기"로 지정한 문제의 펜 필기(벡터 좌표) 영구 저장소
+      if(!s.penRemembered) s.penRemembered = {}; // 어떤 문제를 "기억하기" 했는지 여부
       if(!Array.isArray(s.reviewCountModes) || !s.reviewCountModes.length) s.reviewCountModes = ["srs"];
       return s;
     }
   }catch(e){}
-  return {progress:{}, wrong:{}, bookmarks:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:null, edits:{}, examConfig:null, setRepeats:{}, reviewCountModes:["srs"]};
+  return {progress:{}, wrong:{}, bookmarks:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:null, edits:{}, examConfig:null, setRepeats:{}, penNotes:{}, penRemembered:{}, reviewCountModes:["srs"]};
 }
 let store = loadStore();
 function saveStore(){
@@ -1674,8 +1691,161 @@ function toggleBookmark(qid){
   saveStore();
 }
 
+/* ============ 펜 필기 연습장 ============
+   기본은 세션 캐시(state.penMemos)에만 담아 앱을 종료(새로고침)하면 사라진다.
+   문제별 "🔖 기억하기" 버튼을 눌러야만 store.penNotes에 영구 저장되며(store.penRemembered로
+   어떤 문제를 기억할지 별도 표시), 즐겨찾기(★) 여부와는 무관하게 독립적으로 동작한다.
+   용량 관리를 위해 ①근접한 점은 기록하지 않는 압축, ②문제당 점 1,500개 상한(초과 시
+   오래된 획부터 삭제), ③전체 저장량이 3MB를 넘으면 경고 후 더 이상 영구 저장하지 않는
+   안전장치를 둔다. */
+const PEN_MAX_POINTS_PER_Q = 1500;
+const PEN_MIN_POINT_DIST = 0.006; // 정규화 좌표(0~1) 기준 최소 이동 거리 — 이보다 가까운 점은 생략(압축)
+const PEN_STORAGE_LIMIT_BYTES = 3 * 1024 * 1024; // 전체 penNotes 저장 한도(경고 기준)
+function getPenNoteFor(qid){
+  if(store.penNotes && store.penNotes[qid]) return store.penNotes[qid];
+  if(state.penMemos && state.penMemos[qid]) return state.penMemos[qid];
+  return null;
+}
+function isPenRemembered(qid){
+  return !!(store.penRemembered && store.penRemembered[qid]);
+}
+/* 문제 하나의 점 총 개수가 상한을 넘으면, 오래된 획부터 통째로 지워서 상한 아래로 맞춘다. */
+function capStrokes(strokes){
+  let total = strokes.reduce((n,s)=>n+s.length, 0);
+  while(total > PEN_MAX_POINTS_PER_Q && strokes.length){
+    total -= strokes[0].length;
+    strokes.shift();
+  }
+  return strokes;
+}
+function penNotesSizeBytes(){
+  try{ return JSON.stringify(store.penNotes||{}).length; }catch(e){ return 0; }
+}
+function setupPenCanvas(q){
+  const canvas = document.getElementById("penCanvas");
+  if(!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 300;
+  const cssH = canvas.clientHeight || 190;
+  canvas.width = Math.round(cssW*dpr);
+  canvas.height = Math.round(cssH*dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#243c3d";
+  ctx.lineWidth = 2.2;
+
+  const saved = getPenNoteFor(q.id);
+  let strokes = saved ? saved.map(s=>s.map(p=>p.slice())) : [];
+  let curStroke = null;
+
+  function redraw(){
+    ctx.clearRect(0, 0, cssW, cssH);
+    strokes.forEach(s=>{
+      if(s.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(s[0][0]*cssW, s[0][1]*cssH);
+      for(let i=1;i<s.length;i++) ctx.lineTo(s[i][0]*cssW, s[i][1]*cssH);
+      ctx.stroke();
+    });
+  }
+  redraw();
+
+  function posOf(e){
+    const r = canvas.getBoundingClientRect();
+    return [(e.clientX-r.left)/cssW, (e.clientY-r.top)/cssH];
+  }
+  const refreshHint = ()=>{
+    const hintEl = document.getElementById("penPadHint");
+    if(!hintEl) return;
+    const on = isPenRemembered(q.id);
+    hintEl.textContent = on ? "🔖 기억한 문제 · 계속 보관돼요" : "이번 세션 동안만 유지돼요 (앱 종료 시 사라짐)";
+    hintEl.classList.toggle("saved", on);
+  };
+  const rememberBtn = document.getElementById("penPadRememberBtn");
+  const refreshRememberBtn = ()=>{
+    if(!rememberBtn) return;
+    rememberBtn.classList.toggle("active", isPenRemembered(q.id));
+  };
+  refreshHint();
+  refreshRememberBtn();
+
+  function persist(){
+    if(!state.penMemos) state.penMemos = {};
+    capStrokes(strokes);
+    state.penMemos[q.id] = strokes;
+    if(!isPenRemembered(q.id)) return;
+    // 전체 저장량이 한도를 넘으면 더 이상 영구 저장하지 않고 한 번만 경고(세션당 1회)
+    const prospective = penNotesSizeBytes() - JSON.stringify(store.penNotes[q.id]||[]).length + JSON.stringify(strokes).length;
+    if(prospective > PEN_STORAGE_LIMIT_BYTES){
+      if(!state.penStorageWarned){
+        state.penStorageWarned = true;
+        alert("필기 저장공간이 가득 찼어요. 일부 문제의 '기억하기'를 해제하거나 지우기를 눌러 공간을 확보해주세요.");
+      }
+      return;
+    }
+    store.penNotes[q.id] = strokes;
+    saveStore();
+  }
+  canvas.addEventListener("pointerdown", e=>{
+    e.preventDefault();
+    if(canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    curStroke = [posOf(e)];
+    strokes.push(curStroke);
+  });
+  canvas.addEventListener("pointermove", e=>{
+    if(!curStroke) return;
+    const p = posOf(e);
+    const last = curStroke[curStroke.length-1];
+    // 직전 점과 너무 가까우면 기록하지 않는다(용량 압축)
+    if(last){
+      const dx = p[0]-last[0], dy = p[1]-last[1];
+      if((dx*dx+dy*dy) < PEN_MIN_POINT_DIST*PEN_MIN_POINT_DIST) return;
+    }
+    curStroke.push(p);
+    redraw();
+  });
+  const endStroke = ()=>{
+    if(!curStroke) return;
+    curStroke = null;
+    persist();
+  };
+  canvas.addEventListener("pointerup", endStroke);
+  canvas.addEventListener("pointercancel", endStroke);
+  canvas.addEventListener("pointerleave", ()=>{ if(curStroke) endStroke(); });
+
+  const clearBtn = document.getElementById("penPadClearBtn");
+  if(clearBtn){
+    clearBtn.onclick = ()=>{
+      strokes = [];
+      curStroke = null;
+      redraw();
+      if(!state.penMemos) state.penMemos = {};
+      state.penMemos[q.id] = strokes;
+      if(store.penNotes[q.id]){ delete store.penNotes[q.id]; saveStore(); }
+    };
+  }
+  if(rememberBtn){
+    rememberBtn.onclick = ()=>{
+      const now = !isPenRemembered(q.id);
+      if(!store.penRemembered) store.penRemembered = {};
+      if(now){
+        store.penRemembered[q.id] = true;
+        persist(); // 지금까지 그린 내용을 즉시 영구 저장으로 전환
+      }else{
+        delete store.penRemembered[q.id];
+        if(store.penNotes[q.id]) delete store.penNotes[q.id]; // 기억 해제 시 저장공간 회수
+        saveStore();
+      }
+      refreshHint();
+      refreshRememberBtn();
+    };
+  }
+}
+
 /* ============ 상태/렌더 ============ */
-let state = { view:"home", queue:[], idx:0, examAnswers:{}, examTimeLeft:0, examTimer:null, unitFilter:null, yearFilter:null, studyMode:"exam", voiceDelay:3 };
+let state = { view:"home", queue:[], idx:0, examAnswers:{}, examTimeLeft:0, examTimer:null, unitFilter:null, yearFilter:null, studyMode:"exam", voiceDelay:3, penMemos:{} };
 let isAdminUnlocked = false;
 /* ③ 외부 백업 병합 결과: 용량이 커서(이미지 포함 시 수 MB) localStorage에 저장하지 않고
    이 변수에만 잠시 담아둔다. 새로고침하면 사라지므로, 병합 직후 ④번으로 바로 내보내야 한다. */
@@ -2053,7 +2223,7 @@ function renderHome(){
   app.querySelector("#dupStatBtn").addEventListener("click", openDupStatModal);
   app.querySelector("#resetBtn").addEventListener("click", ()=>{
     if(confirm("모든 학습기록(정답률, 오답노트, 즐겨찾기, SRS 진행도)을 초기화할까요?")){
-      store = {progress:{}, wrong:{}, bookmarks:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:store.customData, edits:store.edits, examConfig:store.examConfig, targetDate:store.targetDate};
+      store = {progress:{}, wrong:{}, bookmarks:{}, penNotes:{}, penRemembered:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:store.customData, edits:store.edits, examConfig:store.examConfig, targetDate:store.targetDate};
       saveStore(); render();
     }
   });
@@ -3020,6 +3190,17 @@ function renderCard(){
         <div id="answerSlot"></div>
         <textarea class="ans-input" id="ansInput" placeholder="여기에 답을 입력해보세요 (생략 가능)"></textarea>
         <div id="gradeSlot"></div>
+        <div class="pen-pad">
+          <div class="pen-pad-head">
+            <span class="pen-pad-title">✍️ 필기 연습장</span>
+            <div class="pen-pad-actions">
+              <button type="button" class="pen-pad-remember" id="penPadRememberBtn" title="이 문제 필기를 계속 기억하기">🔖 기억하기</button>
+              <button type="button" class="pen-pad-clear" id="penPadClearBtn">지우기</button>
+            </div>
+          </div>
+          <div class="pen-pad-hint" id="penPadHint"></div>
+          <canvas class="pen-canvas" id="penCanvas"></canvas>
+        </div>
         ${isVoice ? `
       <div class="voice-controls" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">
         <label style="font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px;">
@@ -3069,6 +3250,7 @@ function renderCard(){
   };
   refreshStarBtn();
   starBtnEl.addEventListener("click", ()=>{ toggleBookmark(q.id); refreshStarBtn(); });
+  setupPenCanvas(q);
   if(isVoice){
     const delayRange = document.getElementById("voiceDelayRange");
     const delayVal = document.getElementById("voiceDelayVal");
@@ -3086,7 +3268,7 @@ function renderCard(){
   attachCardGestures("cardBox",
     (e)=>{
       const t = e.target;
-      if(t.closest && t.closest("button,textarea,input,.mini-btn,#answerSlot")) return;
+      if(t.closest && t.closest("button,textarea,input,.mini-btn,#answerSlot,.pen-pad")) return;
       if(t.tagName === "IMG"){ openImageZoom(t.src); return; }
       revealAnswer(q);
     },
@@ -4451,7 +4633,7 @@ function renderSettings(){
   });
   app.querySelector("#resetAll").addEventListener("click", ()=>{
     if(confirm("모든 학습기록을 초기화할까요? (문제 데이터·수정내역은 유지됩니다)")){
-      store = {progress:{}, wrong:{}, bookmarks:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:store.customData, edits:store.edits, examConfig:store.examConfig, session:{}, examSession:null, setRepeats:{}, targetDate:store.targetDate};
+      store = {progress:{}, wrong:{}, bookmarks:{}, penNotes:{}, penRemembered:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:store.customData, edits:store.edits, examConfig:store.examConfig, session:{}, examSession:null, setRepeats:{}, targetDate:store.targetDate};
       saveStore(); setView("home");
     }
   });
@@ -4474,6 +4656,8 @@ function renderSettings(){
           progress: isFullBackup ? (parsed.progress||{}) : {},
           wrong: isFullBackup ? (parsed.wrong||{}) : {},
           bookmarks: isFullBackup ? (parsed.bookmarks||{}) : {},
+          penNotes: isFullBackup ? (parsed.penNotes||{}) : {},
+          penRemembered: isFullBackup ? (parsed.penRemembered||{}) : {},
           streak: isFullBackup ? (parsed.streak||{last:null,count:0}) : {last:null,count:0},
           solvedTotal: isFullBackup ? (parsed.solvedTotal||0) : 0,
           correctTotal: isFullBackup ? (parsed.correctTotal||0) : 0,
@@ -4503,6 +4687,8 @@ function renderSettings(){
       progress: store.progress,
       wrong: store.wrong,
       bookmarks: store.bookmarks,
+      penNotes: store.penNotes,
+      penRemembered: store.penRemembered,
       streak: store.streak,
       solvedTotal: store.solvedTotal,
       correctTotal: store.correctTotal,
@@ -4524,7 +4710,7 @@ function renderSettings(){
 
   app.querySelector("#restoreSample").addEventListener("click", ()=>{
     if(!confirm("이 앱의 기본 샘플 데이터로 되돌릴까요? 현재 데이터·기록은 초기화됩니다.")) return;
-    store = {progress:{}, wrong:{}, bookmarks:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:null, edits:{}, examConfig:null, session:{}, examSession:null, setRepeats:{}};
+    store = {progress:{}, wrong:{}, bookmarks:{}, penNotes:{}, penRemembered:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:null, edits:{}, examConfig:null, session:{}, examSession:null, setRepeats:{}};
     saveStore();
     applyExamConfig();
     alert("샘플 데이터로 복원했습니다.");
@@ -4686,7 +4872,7 @@ async function buildAndDownloadZipBackup(includeProgress, password){
     const mergedData = (!store.edits || !Object.keys(store.edits).length) ? mergedBaseData : mergedBaseData.map(q => store.edits[q.id] ? {...q, ...store.edits[q.id]} : q);
     const newStore = includeProgress
       ? {...store, customData:null, edits:{}, session:{}, examSession:null}
-      : {progress:{}, wrong:{}, bookmarks:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:null, edits:{}, examConfig:store.examConfig, session:{}, examSession:null, setRepeats:{}};
+      : {progress:{}, wrong:{}, bookmarks:{}, penNotes:{}, penRemembered:{}, streak:{last:null,count:0}, solvedTotal:0, correctTotal:0, customData:null, edits:{}, examConfig:store.examConfig, session:{}, examSession:null, setRepeats:{}};
 
     if(password){
       // 비밀번호 지정 시: 문제/학습 데이터를 이 앱 전용의 간단한 잠금(XOR+Base64)으로 감싸서
@@ -4871,6 +5057,9 @@ function attachCardGestures(elId, onTap, onSwipeLeft, onSwipeRight){
 
   el.addEventListener("touchstart", e=>{
     if(e.touches.length!==1) return;
+    // 펜 필기장 위에서 시작한 터치는 카드 스와이프(이전/다음)로 오인하지 않도록 제외
+    const t = e.touches[0].target;
+    if(t && t.closest && t.closest(".pen-canvas")) return;
     begin(e.touches[0].clientX, e.touches[0].clientY);
   }, {passive:true});
   el.addEventListener("touchmove", e=>{
@@ -4890,7 +5079,7 @@ function attachCardGestures(elId, onTap, onSwipeLeft, onSwipeRight){
   });
 
   el.addEventListener("mousedown", e=>{
-    if(e.target.closest("button,textarea,input,select,.mini-btn,.edit-image-del,#answerSlot")) return;
+    if(e.target.closest("button,textarea,input,select,.mini-btn,.edit-image-del,#answerSlot,.pen-canvas")) return;
     mouseDown = true;
     begin(e.clientX, e.clientY);
   });
