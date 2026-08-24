@@ -1027,7 +1027,7 @@
        세 가지 다 파일을 건드릴 때마다 이 주석부터 확인할 것.
    [3] 엔진 수정 후에는 곧바로 배포본을 만들지 말고, 무엇을 고쳤는지 먼저 설명하고
        사용자 컨펌을 받은 뒤에만 배포본(들)을 새로 만든다. */
-const APP_VERSION = "2026.08.24_11:57";
+const APP_VERSION = "2026.08.24_12:38";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1837,6 +1837,14 @@ const PEN_TOOL_PRESETS = {
    이 값은 반드시 함수 밖(모듈 스코프)에 둬야 문제를 넘겨도 값이 유지된다. */
 let penEverUsedGlobal = false;
 let penInputModeGlobal = "auto"; // 'auto' | 'penOnly' | 'touch' — 세션 동안 유지되는 필기 입력 인식 모드
+let currentPenResync = null; // 지금 카드의 필기 캔버스를 다시 측정+다시 그리는 함수(탭 전환/화면 크기 변경 시 호출)
+let penResyncDebounce = null;
+window.addEventListener("resize", ()=>{
+  // 브라우저 창 크기(또는 화면 회전)가 바뀌면 캔버스의 실제 픽셀 버퍼 크기도 다시 맞춰야
+  // 브라우저가 기존 그림을 억지로 늘려서 보여주는 현상(글씨가 늘어나 보이는 문제)이 없어진다.
+  if(penResyncDebounce) clearTimeout(penResyncDebounce);
+  penResyncDebounce = setTimeout(()=>{ if(currentPenResync) currentPenResync(); }, 150);
+});
 let lastPracticeTabGlobal = "kbd"; // 세션 동안 유지되는 마지막 선택 탭(기본값: 키보드연습장)
 function setupPracticeTabs(q){
   const tabBar = document.getElementById("practiceTabs");
@@ -1847,23 +1855,32 @@ function setupPracticeTabs(q){
     voice: document.getElementById("practicePanelVoice")
   };
   const btns = Array.from(tabBar.querySelectorAll(".practice-tab-btn"));
-  function activate(tab, isUserClick){
+  function activate(tab){
+    const wasPenHidden = panels.pen && panels.pen.style.display === "none";
     lastPracticeTabGlobal = tab;
     btns.forEach(b=> b.classList.toggle("active", b.dataset.tab===tab));
     Object.entries(panels).forEach(([k,el])=>{ if(el) el.style.display = (k===tab) ? "" : "none"; });
-    // 키보드연습장을 "직접 눌러서" 선택했을 때만 입력창에 자동 포커스한다.
-    // (문제를 넘길 때마다 매번 자동으로 포커스하면 모바일 키보드가 원치 않게 계속 튀어나옴)
-    if(tab === "kbd" && isUserClick){
+    // 키보드연습장이 표시될 때는(처음 로딩 포함) 바로 타이핑할 수 있도록 입력창에 포커스한다.
+    if(tab === "kbd"){
       const ta = document.getElementById("kbdPadTextarea");
-      if(ta) ta.focus();
+      if(ta) setTimeout(()=> ta.focus(), 0);
+    }
+    // 필기연습장이 "숨김→표시"로 바뀌는 순간, 캔버스를 실제 화면 크기로 다시 측정+다시 그린다.
+    // (숨겨진 상태에서 측정하면 크기가 0으로 잡혀 펜 위치와 실제 그려지는 위치가 어긋나는 원인이 됐음)
+    if(tab === "pen" && wasPenHidden && currentPenResync){
+      requestAnimationFrame(()=> currentPenResync());
     }
   }
-  btns.forEach(b=> b.addEventListener("click", ()=> activate(b.dataset.tab, true)));
+  btns.forEach(b=> b.addEventListener("click", ()=> activate(b.dataset.tab)));
   // 음성학습모드 중일 때는 문제가 바뀔 때마다 음성연습장을 자동으로 띄운다.
-  activate(state.studyMode === "voice" ? "voice" : lastPracticeTabGlobal, false);
+  activate(state.studyMode === "voice" ? "voice" : lastPracticeTabGlobal);
   setupPenCanvas(q);
   setupKeyboardPad(q);
   setupVoicePad(q);
+  // 처음 렌더링될 때 필기 탭이 곧바로 기본 탭이었던 경우를 대비해 한 번 더 재측정한다.
+  if(lastPracticeTabGlobal === "pen" && currentPenResync){
+    requestAnimationFrame(()=> currentPenResync());
+  }
 }
 /* ---- 키보드 연습장: 세션 동안만 유지되는 간단한 메모장(지우기 버튼으로 초기화) ---- */
 function setupKeyboardPad(q){
@@ -1906,12 +1923,12 @@ function setupVoicePad(q){
   } else {
     let recognizing = false;
     let recognizer = null;
-    const startRec = ()=>{
+    let committedText = ""; // 이미 확정된 텍스트(녹음 시작 전 기존 값 + 지금까지 확정된 문장들)
+    const startSession = ()=>{
       recognizer = new SR();
       recognizer.lang = "ko-KR";
       recognizer.interimResults = true;
       recognizer.continuous = true;
-      let baseText = ta.value ? (ta.value + " ") : "";
       recognizer.onresult = (e)=>{
         let finalTxt = "", interimTxt = "";
         for(let i=0;i<e.results.length;i++){
@@ -1919,17 +1936,24 @@ function setupVoicePad(q){
           if(r.isFinal) finalTxt += r[0].transcript;
           else interimTxt += r[0].transcript;
         }
-        ta.value = baseText + finalTxt + interimTxt;
+        ta.value = committedText + finalTxt + interimTxt;
         state.voiceMemos[q.id] = ta.value;
       };
       recognizer.onerror = ()=>{ if(statusEl) statusEl.textContent = "음성 인식 중 오류가 발생했어요. 다시 시도해주세요."; };
       recognizer.onend = ()=>{
-        if(recognizing){
-          // 계속듣기 모드에서 브라우저가 자동으로 멈추면 다시 시작
-          try{ recognizer.start(); }catch(e){}
+        if(!recognizing) return;
+        // 이 세션에서 확정된 부분을 누적해두고(끊어 말해도 앞 내용이 사라지지 않도록),
+        // 새 인식 세션을 이어서 시작한다. (브라우저가 계속듣기 모드에서도 종종 세션을 스스로 끊기 때문)
+        if(ta.value && ta.value.length > committedText.length){
+          committedText = ta.value.endsWith(" ") ? ta.value : ta.value + " ";
         }
+        try{ startSession(); }catch(e){}
       };
       recognizer.start();
+    };
+    const startRec = ()=>{
+      committedText = ta.value ? (ta.value + " ") : "";
+      startSession();
       recognizing = true;
       recBtn.classList.add("recording");
       recBtn.textContent = "⏹ 녹음 중지";
@@ -1974,8 +1998,12 @@ function setupPenCanvas(q){
 
   let cssW = 0, cssH = 0, ctx = null;
   function applySize(){
-    cssW = canvas.clientWidth || 300;
-    cssH = canvas.clientHeight || PEN_CANVAS_MIN_HEIGHT;
+    // getBoundingClientRect()를 그리기 크기와 좌표 계산 양쪽에 똑같이 써서
+    // (테두리 유무 등으로 clientWidth/Height와 어긋나) 펜촉 위치와 실제 그려지는
+    // 위치가 미세하게 달라지는 문제를 없앤다.
+    const r = canvas.getBoundingClientRect();
+    cssW = r.width || 300;
+    cssH = r.height || PEN_CANVAS_MIN_HEIGHT;
     canvas.width = Math.round(cssW*dpr);
     canvas.height = Math.round(cssH*dpr);
     ctx = canvas.getContext("2d");
@@ -2229,6 +2257,20 @@ function setupPenCanvas(q){
       window.addEventListener("pointerup", onEnd);
     });
   }
+
+  /* ---- 재측정 함수 등록: 필기 탭이 화면에 보이지 않는 상태(display:none)에서 setupPenCanvas가
+     실행되면 getBoundingClientRect()가 0(또는 fallback 값)을 반환해 캔버스가 잘못된 크기로
+     잡힌다. 탭이 "필기"로 전환되어 실제로 보이는 순간, 그리고 브라우저 창 크기가 바뀔 때마다
+     이 함수를 다시 호출해서 실제 표시 크기에 맞게 다시 측정하고 다시 그린다. */
+  currentPenResync = ()=>{
+    const wasW = cssW, wasH = cssH;
+    applySize();
+    // 캔버스가 처음으로 실제 크기를 얻은 경우(이전엔 0이었던 경우)에만 좌표계를 다시 계산할
+    // 필요는 없다 — x는 어차피 매번 cssW 기준으로 정규화돼 그려지고, y는 절대 픽셀이라
+    // 처음 0으로 잘못 측정된 상태에서 저장된 좌표가 없다면(즉 새 문항) 그냥 다시 그리면 된다.
+    redraw();
+  };
+  currentPenResync();
 }
 
 /* ============ 상태/렌더 ============ */
@@ -3729,6 +3771,7 @@ function renderCard(){
     acquireWakeLock();
     runVoiceStudy(q, voiceSessionToken);
   }
+  updateRevealBtnLabel(); // 버튼 라벨이 state.answerVisible과 항상 일치하도록 렌더링 끝에서 한번 더 맞춘다
 }
 
 /* ---- 음성학습모드: 문제 읽기 → (음성연습장으로) 5초 이내 답변 감지 → 답변 읽기 → 2초 후 자동 다음 문제
@@ -3857,50 +3900,24 @@ function listenForVoiceAnswer(q, session){
   if(!SR){
     // 이 브라우저는 음성인식 미지원 → 예전 방식(고정 대기시간)으로 대체
     if(statusEl) statusEl.textContent = "이 브라우저는 음성인식을 지원하지 않아 고정 대기시간으로 진행해요.";
-    startGap(state.voiceDelay*1000, ()=>{ if(session===voiceSessionToken) revealAndSpeakVoiceAnswer(q, session); });
+    startGap(voiceStudyListenMs(), ()=>{ if(session===voiceSessionToken) revealAndSpeakVoiceAnswer(q, session); });
     return;
   }
   if(statusEl) statusEl.textContent = `🎙️ 답변을 들을게요 (${voiceStudyListenMs()/1000}초 이내)…`;
   let gotSpeech = false;
-  let baseText = "";
+  let committedText = "";
+  let answered = false; // revealAndSpeakVoiceAnswer 중복 호출 방지
   const ta = document.getElementById("voicePadTextarea");
-  if(ta){ baseText = ta.value ? (ta.value + " ") : ""; }
+  if(ta){ committedText = ta.value ? (ta.value + " ") : ""; }
 
-  const recognizer = new SR();
-  voiceStudyRecognizer = recognizer;
-  recognizer.lang = "ko-KR";
-  recognizer.interimResults = true;
-  recognizer.continuous = false;
-
-  let noSpeechTimer = setTimeout(()=>{
-    noSpeechTimer = null;
-    try{ recognizer.abort(); }catch(e){}
-  }, voiceStudyListenMs());
-
-  recognizer.onresult = (e)=>{
-    if(session !== voiceSessionToken) return;
+  const proceedToAnswer = ()=>{
+    if(answered) return;
+    if(voicePaused) return; // 일시정지 중이면 재개 로직에서 별도 처리
+    answered = true;
+    stopVoiceStudyRecognizer();
     if(noSpeechTimer){ clearTimeout(noSpeechTimer); noSpeechTimer = null; }
-    gotSpeech = true;
-    let finalTxt = "", interimTxt = "";
-    for(let i=0;i<e.results.length;i++){
-      const r = e.results[i];
-      if(r.isFinal) finalTxt += r[0].transcript;
-      else interimTxt += r[0].transcript;
-    }
-    if(ta){
-      ta.value = baseText + finalTxt + interimTxt;
-      if(!state.voiceMemos) state.voiceMemos = {};
-      state.voiceMemos[q.id] = ta.value;
-    }
-    if(statusEl) statusEl.textContent = "듣고 있어요…";
-  };
-  recognizer.onerror = ()=>{ /* no-speech 등의 오류는 onend에서 일괄 처리 */ };
-  recognizer.onend = ()=>{
-    if(voiceStudyRecognizer !== recognizer) return; // 이미 새 세션이 시작된 경우 무시
-    voiceStudyRecognizer = null;
-    if(noSpeechTimer){ clearTimeout(noSpeechTimer); noSpeechTimer = null; }
+    if(safetyTimer){ clearTimeout(safetyTimer); safetyTimer = null; }
     if(session !== voiceSessionToken) return;
-    if(voicePaused) return; // 일시정지 중이면 재개 시 처리
     if(gotSpeech){
       if(statusEl) statusEl.textContent = "답변을 들었어요. 잠시 후 정답을 읽어드릴게요.";
       startGap(voiceStudyPostAnswerGapMs(), ()=>{ if(session===voiceSessionToken) revealAndSpeakVoiceAnswer(q, session); });
@@ -3909,11 +3926,63 @@ function listenForVoiceAnswer(q, session){
       revealAndSpeakVoiceAnswer(q, session);
     }
   };
-  try{ recognizer.start(); }catch(e){
-    // 이미 시작된 인식기가 있는 등 예외 발생 시에도 진행이 멈추지 않도록 폴백
-    if(noSpeechTimer){ clearTimeout(noSpeechTimer); noSpeechTimer = null; }
-    revealAndSpeakVoiceAnswer(q, session);
-  }
+
+  let noSpeechTimer = setTimeout(()=>{
+    noSpeechTimer = null;
+    if(!gotSpeech) proceedToAnswer(); // 아직 한마디도 안 했으면 여기서 바로 정답으로 진행
+  }, voiceStudyListenMs());
+  // 만에 하나 음성인식 이벤트가 하나도 안 들어오는 등 예외적인 상황에서도 흐름이 멈추지 않도록
+  // 최대 대기시간(듣기 + 답변후 대기 + 여유 5초)이 지나면 무조건 정답 단계로 진행시키는 안전장치.
+  let safetyTimer = setTimeout(()=>{
+    proceedToAnswer();
+  }, voiceStudyListenMs() + voiceStudyPostAnswerGapMs() + 5000);
+
+  const startSession = ()=>{
+    const recognizer = new SR();
+    voiceStudyRecognizer = recognizer;
+    recognizer.lang = "ko-KR";
+    recognizer.interimResults = true;
+    recognizer.continuous = true;
+    recognizer.onresult = (e)=>{
+      if(session !== voiceSessionToken) return;
+      if(noSpeechTimer){ clearTimeout(noSpeechTimer); noSpeechTimer = null; }
+      gotSpeech = true;
+      let finalTxt = "", interimTxt = "";
+      for(let i=0;i<e.results.length;i++){
+        const r = e.results[i];
+        if(r.isFinal) finalTxt += r[0].transcript;
+        else interimTxt += r[0].transcript;
+      }
+      if(ta){
+        ta.value = committedText + finalTxt + interimTxt;
+        if(!state.voiceMemos) state.voiceMemos = {};
+        state.voiceMemos[q.id] = ta.value;
+      }
+      if(statusEl) statusEl.textContent = "듣고 있어요…";
+    };
+    recognizer.onerror = ()=>{ /* no-speech 등의 오류는 onend에서 일괄 처리 */ };
+    recognizer.onend = ()=>{
+      if(voiceStudyRecognizer !== recognizer) return; // 이미 새 세션이 시작된 경우 무시
+      voiceStudyRecognizer = null;
+      if(answered) return;
+      if(voicePaused) return; // 일시정지 중이면 재개 시 처리
+      if(ta && ta.value && ta.value.length > committedText.length){
+        committedText = ta.value.endsWith(" ") ? ta.value : ta.value + " ";
+      }
+      if(!gotSpeech){
+        // 아직 말을 시작 안 한 상태로 세션이 끝났으면(예: 인식기 자체 타임아웃) 다시 듣기 시작
+        try{ startSession(); }catch(e){ proceedToAnswer(); }
+      } else {
+        // 한 번이라도 말을 했다면, 말이 끊긴 뒤 곧바로 "답변 후 대기"로 넘어간다
+        // (계속 말할 수도 있으니, 완전히 침묵한 채로 대기시간만큼 지나면 정답으로 진행)
+        proceedToAnswer();
+      }
+    };
+    try{ recognizer.start(); }catch(e){
+      proceedToAnswer();
+    }
+  };
+  startSession();
 }
 function revealAndSpeakVoiceAnswer(q, session){
   if(session !== voiceSessionToken) return;
