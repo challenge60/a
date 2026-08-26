@@ -1030,7 +1030,7 @@
        세 가지 다 파일을 건드릴 때마다 이 주석부터 확인할 것.
    [3] 엔진 수정 후에는 곧바로 배포본을 만들지 말고, 무엇을 고쳤는지 먼저 설명하고
        사용자 컨펌을 받은 뒤에만 배포본(들)을 새로 만든다. */
-const APP_VERSION = "2026.08.26_18:17";
+const APP_VERSION = "2026.08.26_18:34";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1954,21 +1954,34 @@ function setupVoicePad(q){
   } else {
     let recognizing = false;
     let recognizer = null;
-    let committedText = ""; // 이미 확정된 텍스트(녹음 시작 전 기존 값 + 지금까지 확정된 문장들)
+    let baseText = ""; // 녹음 시작 전 입력창에 이미 있던 텍스트
+    let finalSegments = []; // 인식 세션이 끝날 때마다 "그 세션이 확정한 문장"을 하나씩 통째로 담는다
+    const renderText = (sessionFinal, sessionInterim)=>{
+      // 화면에 보여줄 텍스트는 매번 (기존 텍스트 + 확정된 세그먼트들 + 지금 세션의 확정/중간 결과)를
+      // 처음부터 다시 조립한다. ta.value를 읽어서 그 위에 또 쌓지 않기 때문에(이전 방식의 문제),
+      // 세션이 여러 번 끊겼다 이어져도 같은 말이 중복으로 쌓이지 않는다.
+      const parts = [baseText.trim(), ...finalSegments, sessionFinal].filter(Boolean);
+      let text = parts.join(" ");
+      if(sessionInterim) text += (text?" ":"") + sessionInterim;
+      ta.value = text;
+      state.voiceMemos[q.id] = text;
+    };
     const startSession = ()=>{
       recognizer = new SR();
       recognizer.lang = "ko-KR";
       recognizer.interimResults = true;
       recognizer.continuous = true;
+      let sessionFinal = "", sessionInterim = "";
       recognizer.onresult = (e)=>{
-        let finalTxt = "", interimTxt = "";
-        for(let i=0;i<e.results.length;i++){
-          const r = e.results[i];
-          if(r.isFinal) finalTxt += r[0].transcript;
-          else interimTxt += r[0].transcript;
+        let f = "", i = "";
+        for(let idx=0; idx<e.results.length; idx++){
+          const r = e.results[idx];
+          if(r.isFinal) f += r[0].transcript;
+          else i += r[0].transcript;
         }
-        ta.value = committedText + finalTxt + interimTxt;
-        state.voiceMemos[q.id] = ta.value;
+        sessionFinal = f;
+        sessionInterim = i;
+        renderText(sessionFinal, sessionInterim);
       };
       recognizer.onerror = (e)=>{
         const info = voiceErrorInfo(e && e.error);
@@ -1979,11 +1992,8 @@ function setupVoicePad(q){
       };
       recognizer.onend = ()=>{
         if(!recognizing) return;
-        // 이 세션에서 확정된 부분을 누적해두고(끊어 말해도 앞 내용이 사라지지 않도록),
-        // 새 인식 세션을 이어서 시작한다. (브라우저가 계속듣기 모드에서도 종종 세션을 스스로 끊기 때문)
-        if(ta.value && ta.value.length > committedText.length){
-          committedText = ta.value.endsWith(" ") ? ta.value : ta.value + " ";
-        }
+        // 이 세션이 확정한 문장을 통째로 배열에 담아둔다(끊어 말해도 앞 내용이 사라지지 않도록).
+        if(sessionFinal) finalSegments.push(sessionFinal);
         // 끝나자마자 바로 재시작하면 마이크 버퍼가 덜 정리된 채로 겹쳐서, 같은 말이
         // 여러 번 중복 인식되는 문제가 있었다. 아주 짧게 텀을 두고 재시작한다.
         setTimeout(()=>{ if(recognizing){ try{ startSession(); }catch(e){} } }, 300);
@@ -1991,7 +2001,8 @@ function setupVoicePad(q){
       recognizer.start();
     };
     const startRec = ()=>{
-      committedText = ta.value ? (ta.value + " ") : "";
+      baseText = ta.value || "";
+      finalSegments = [];
       startSession();
       recognizing = true;
       recBtn.classList.add("recording");
@@ -3990,10 +4001,21 @@ function listenForVoiceAnswer(q, session){
   setRecBtnRecording(true);
   voiceStudyAutoListening = true; // 수동 녹음 버튼과 동시에 두 개의 인식기가 뜨는 것을 막기 위한 표시
   let gotSpeech = false;
-  let committedText = "";
   let answered = false; // revealAndSpeakVoiceAnswer 중복 호출 방지
   const ta = document.getElementById("voicePadTextarea");
-  if(ta){ committedText = ta.value ? (ta.value + " ") : ""; }
+  const baseText = ta ? (ta.value || "") : "";
+  let finalSegments = []; // 인식 세션이 끝날 때마다 "그 세션이 확정한 문장"을 하나씩 통째로 담는다
+  const renderText = (sessionFinal, sessionInterim)=>{
+    // ta.value를 읽어서 그 위에 또 쌓지 않고, 매번 처음부터 다시 조립한다.
+    // (예전 방식은 세션이 끊겼다 이어질 때 같은 말이 중복으로 쌓이는 문제가 있었음)
+    if(!ta) return;
+    const parts = [baseText.trim(), ...finalSegments, sessionFinal].filter(Boolean);
+    let text = parts.join(" ");
+    if(sessionInterim) text += (text?" ":"") + sessionInterim;
+    ta.value = text;
+    if(!state.voiceMemos) state.voiceMemos = {};
+    state.voiceMemos[q.id] = text;
+  };
 
   const proceedToAnswer = ()=>{
     if(answered) return;
@@ -4055,6 +4077,7 @@ function listenForVoiceAnswer(q, session){
     recognizer.lang = "ko-KR";
     recognizer.interimResults = true;
     recognizer.continuous = true;
+    let sessionFinal = "", sessionInterim = "";
     recognizer.onstart = ()=>{
       if(session !== voiceSessionToken) return;
       if(!gotSpeech) armTimers(); // 마이크가 진짜로 열린 시점부터 "무응답" 대기시간을 다시 센다
@@ -4065,17 +4088,15 @@ function listenForVoiceAnswer(q, session){
       if(noSpeechTimer){ clearTimeout(noSpeechTimer); noSpeechTimer = null; }
       gotSpeech = true;
       armSilenceTimer(); // 말이 들어올 때마다(중간중간 쉬어도) 침묵 타이머를 계속 새로 건다
-      let finalTxt = "", interimTxt = "";
-      for(let i=0;i<e.results.length;i++){
-        const r = e.results[i];
-        if(r.isFinal) finalTxt += r[0].transcript;
-        else interimTxt += r[0].transcript;
+      let f = "", i = "";
+      for(let idx=0; idx<e.results.length; idx++){
+        const r = e.results[idx];
+        if(r.isFinal) f += r[0].transcript;
+        else i += r[0].transcript;
       }
-      if(ta){
-        ta.value = committedText + finalTxt + interimTxt;
-        if(!state.voiceMemos) state.voiceMemos = {};
-        state.voiceMemos[q.id] = ta.value;
-      }
+      sessionFinal = f;
+      sessionInterim = i;
+      renderText(sessionFinal, sessionInterim);
       if(statusEl) statusEl.textContent = "듣고 있어요…";
     };
     let lastErrorInfo = null;
@@ -4088,9 +4109,8 @@ function listenForVoiceAnswer(q, session){
       voiceStudyRecognizer = null;
       if(answered) return;
       if(voicePaused) return; // 일시정지 중이면 재개 시 처리
-      if(ta && ta.value && ta.value.length > committedText.length){
-        committedText = ta.value.endsWith(" ") ? ta.value : ta.value + " ";
-      }
+      // 이 세션이 확정한 문장을 통째로 배열에 담아둔다(끊어 말해도 앞 내용이 사라지지 않도록).
+      if(sessionFinal) finalSegments.push(sessionFinal);
       // 권한 거부·마이크 없음·네트워크 문제처럼 다시 시도해도 똑같이 실패할 오류라면,
       // 무한히 재시도하지 않고 바로 정답 단계로 넘어간다(사용자에게는 이미 원인 메시지를 보여준 상태).
       if(lastErrorInfo && lastErrorInfo.fatal){
