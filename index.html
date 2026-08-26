@@ -1030,7 +1030,7 @@
        세 가지 다 파일을 건드릴 때마다 이 주석부터 확인할 것.
    [3] 엔진 수정 후에는 곧바로 배포본을 만들지 말고, 무엇을 고쳤는지 먼저 설명하고
        사용자 컨펌을 받은 뒤에만 배포본(들)을 새로 만든다. */
-const APP_VERSION = "2026.08.26_19:21";
+const APP_VERSION = "2026.08.26_19:32";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1945,6 +1945,26 @@ function pushVoiceSegment(segments, newSeg){
   if(lastNorm.includes(segNorm)) return; // 이전 내용의 부분집합(더 짧게 잘린 것) → 버림
   segments.push(seg);
 }
+/* ---- 세션 "안에서도" 일부 기기(특히 안드로이드 크롬 계열)는 e.results에 같은 말을
+   점점 길어지는 여러 개의 확정(isFinal) 조각으로 반복해서 채워넣는 경우가 있다
+   ("그걸로" → "그걸로 한" → "그걸로 한 거구나" 처럼 매번 처음부터 다시).
+   단순히 다 이어붙이면 그대로 중복되므로, pushVoiceSegment와 같은 포함관계 판단으로
+   한 세션 안의 조각들도 병합한다. ---- */
+function mergeGrowingPieces(pieces){
+  let acc = "";
+  for(const raw of pieces){
+    const piece = (raw||"").trim();
+    if(!piece) continue;
+    if(!acc){ acc = piece; continue; }
+    const accNorm = acc.replace(/\s+/g,"");
+    const pieceNorm = piece.replace(/\s+/g,"");
+    if(pieceNorm === accNorm) continue;
+    if(pieceNorm.includes(accNorm)){ acc = piece; continue; } // 확장판 → 교체
+    if(accNorm.includes(pieceNorm)) continue; // 부분집합 → 버림
+    acc += (acc?" ":"") + piece; // 진짜 별개의 문장 → 이어붙임
+  }
+  return acc;
+}
 function setupVoicePad(q){
   const ta = document.getElementById("voicePadTextarea");
   const clearBtn = document.getElementById("voicePadClearBtn");
@@ -1989,13 +2009,13 @@ function setupVoicePad(q){
       recognizer.continuous = true;
       let sessionFinal = "", sessionInterim = "";
       recognizer.onresult = (e)=>{
-        let f = "", i = "";
+        let finalPieces = [], i = "";
         for(let idx=0; idx<e.results.length; idx++){
           const r = e.results[idx];
-          if(r.isFinal) f += r[0].transcript;
+          if(r.isFinal) finalPieces.push(r[0].transcript);
           else i += r[0].transcript;
         }
-        sessionFinal = f;
+        sessionFinal = mergeGrowingPieces(finalPieces);
         sessionInterim = i;
         renderText(sessionFinal, sessionInterim);
       };
@@ -4104,13 +4124,13 @@ function listenForVoiceAnswer(q, session){
       if(noSpeechTimer){ clearTimeout(noSpeechTimer); noSpeechTimer = null; }
       gotSpeech = true;
       armSilenceTimer(); // 말이 들어올 때마다(중간중간 쉬어도) 침묵 타이머를 계속 새로 건다
-      let f = "", i = "";
+      let finalPieces = [], i = "";
       for(let idx=0; idx<e.results.length; idx++){
         const r = e.results[idx];
-        if(r.isFinal) f += r[0].transcript;
+        if(r.isFinal) finalPieces.push(r[0].transcript);
         else i += r[0].transcript;
       }
-      sessionFinal = f;
+      sessionFinal = mergeGrowingPieces(finalPieces);
       sessionInterim = i;
       renderText(sessionFinal, sessionInterim);
       if(statusEl) statusEl.textContent = "듣고 있어요…";
