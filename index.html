@@ -1030,7 +1030,7 @@
        세 가지 다 파일을 건드릴 때마다 이 주석부터 확인할 것.
    [3] 엔진 수정 후에는 곧바로 배포본을 만들지 말고, 무엇을 고쳤는지 먼저 설명하고
        사용자 컨펌을 받은 뒤에만 배포본(들)을 새로 만든다. */
-const APP_VERSION = "2026.08.26_19:32";
+const APP_VERSION = "2026.08.26_22:53";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1933,6 +1933,18 @@ function voiceErrorInfo(code){
    직전 세션과 내용이 겹치는 문장을 다시 인식하는 경우가 있다(예: "나도" → "나도 몰라" →
    "나도 몰라"). 새 세그먼트를 그냥 추가하지 않고, 직전 세그먼트와의 포함 관계를 먼저 확인해서
    완전 중복은 버리고, 이전 내용을 포함하는 확장판이면 교체한다. ---- */
+/* ---- 표현이 살짝 다르게(예: "믹스"→"맥스") 다시 인식된 경우까지 잡기 위해,
+   완전 일치/포함관계가 아니어도 "단어 대부분이 겹치면 사실상 같은 말"로 본다. ---- */
+function wordOverlapRatio(a, b){
+  const wa = a.split(/\s+/).filter(Boolean);
+  const wb = b.split(/\s+/).filter(Boolean);
+  if(!wa.length || !wb.length) return 0;
+  const setA = new Set(wa);
+  let common = 0;
+  wb.forEach(w=>{ if(setA.has(w)) common++; });
+  return common / Math.max(wa.length, wb.length);
+}
+const VOICE_DUP_OVERLAP_THRESHOLD = 0.6; // 단어의 60% 이상 겹치면 "같은 말 다시 말한 것"으로 본다
 function pushVoiceSegment(segments, newSeg){
   const seg = (newSeg||"").trim();
   if(!seg) return;
@@ -1943,6 +1955,11 @@ function pushVoiceSegment(segments, newSeg){
   if(segNorm === lastNorm) return; // 완전히 같은 내용 → 버림
   if(segNorm.includes(lastNorm)){ segments[segments.length-1] = seg; return; } // 이전 내용을 포함하는 확장판 → 교체
   if(lastNorm.includes(segNorm)) return; // 이전 내용의 부분집합(더 짧게 잘린 것) → 버림
+  if(wordOverlapRatio(last, seg) >= VOICE_DUP_OVERLAP_THRESHOLD){
+    // 표현은 조금 다르지만 사실상 같은 말을 다시 한 것 → 더 긴(더 자세한) 쪽으로 교체
+    segments[segments.length-1] = seg.length >= last.length ? seg : last;
+    return;
+  }
   segments.push(seg);
 }
 /* ---- 세션 "안에서도" 일부 기기(특히 안드로이드 크롬 계열)는 e.results에 같은 말을
@@ -1961,6 +1978,10 @@ function mergeGrowingPieces(pieces){
     if(pieceNorm === accNorm) continue;
     if(pieceNorm.includes(accNorm)){ acc = piece; continue; } // 확장판 → 교체
     if(accNorm.includes(pieceNorm)) continue; // 부분집합 → 버림
+    if(wordOverlapRatio(acc, piece) >= VOICE_DUP_OVERLAP_THRESHOLD){
+      acc = piece.length >= acc.length ? piece : acc; // 표현만 다른 재인식 → 더 긴 쪽 채택
+      continue;
+    }
     acc += (acc?" ":"") + piece; // 진짜 별개의 문장 → 이어붙임
   }
   return acc;
@@ -2032,7 +2053,7 @@ function setupVoicePad(q){
         if(sessionFinal) pushVoiceSegment(finalSegments, sessionFinal);
         // 끝나자마자 바로 재시작하면 마이크 버퍼가 덜 정리된 채로 겹쳐서, 같은 말이
         // 여러 번 중복 인식되는 문제가 있었다. 아주 짧게 텀을 두고 재시작한다.
-        setTimeout(()=>{ if(recognizing){ try{ startSession(); }catch(e){} } }, 300);
+        setTimeout(()=>{ if(recognizing){ try{ startSession(); }catch(e){} } }, 800);
       };
       recognizer.start();
     };
@@ -4162,7 +4183,7 @@ function listenForVoiceAnswer(q, session){
       setTimeout(()=>{
         if(session !== voiceSessionToken || answered || voicePaused) return;
         try{ startSession(); }catch(e){ proceedToAnswer(); }
-      }, 300);
+      }, 800);
     };
     try{ recognizer.start(); }catch(e){
       proceedToAnswer();
