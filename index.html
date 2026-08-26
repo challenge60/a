@@ -1030,7 +1030,7 @@
        세 가지 다 파일을 건드릴 때마다 이 주석부터 확인할 것.
    [3] 엔진 수정 후에는 곧바로 배포본을 만들지 말고, 무엇을 고쳤는지 먼저 설명하고
        사용자 컨펌을 받은 뒤에만 배포본(들)을 새로 만든다. */
-const APP_VERSION = "2026.08.26_18:34";
+const APP_VERSION = "2026.08.26_19:21";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -1929,6 +1929,22 @@ function voiceErrorInfo(code){
       return {fatal:true, msg:`🎙️ 음성 인식 오류(${code||"알수없음"})가 발생했어요. 다시 시도해주세요.`};
   }
 }
+/* ---- 음성인식 세션이 짧게 끊겼다 재시작될 때, 마이크 버퍼가 덜 비워진 채로 겹쳐서
+   직전 세션과 내용이 겹치는 문장을 다시 인식하는 경우가 있다(예: "나도" → "나도 몰라" →
+   "나도 몰라"). 새 세그먼트를 그냥 추가하지 않고, 직전 세그먼트와의 포함 관계를 먼저 확인해서
+   완전 중복은 버리고, 이전 내용을 포함하는 확장판이면 교체한다. ---- */
+function pushVoiceSegment(segments, newSeg){
+  const seg = (newSeg||"").trim();
+  if(!seg) return;
+  if(!segments.length){ segments.push(seg); return; }
+  const last = segments[segments.length-1];
+  const lastNorm = last.replace(/\s+/g,"");
+  const segNorm = seg.replace(/\s+/g,"");
+  if(segNorm === lastNorm) return; // 완전히 같은 내용 → 버림
+  if(segNorm.includes(lastNorm)){ segments[segments.length-1] = seg; return; } // 이전 내용을 포함하는 확장판 → 교체
+  if(lastNorm.includes(segNorm)) return; // 이전 내용의 부분집합(더 짧게 잘린 것) → 버림
+  segments.push(seg);
+}
 function setupVoicePad(q){
   const ta = document.getElementById("voicePadTextarea");
   const clearBtn = document.getElementById("voicePadClearBtn");
@@ -1993,7 +2009,7 @@ function setupVoicePad(q){
       recognizer.onend = ()=>{
         if(!recognizing) return;
         // 이 세션이 확정한 문장을 통째로 배열에 담아둔다(끊어 말해도 앞 내용이 사라지지 않도록).
-        if(sessionFinal) finalSegments.push(sessionFinal);
+        if(sessionFinal) pushVoiceSegment(finalSegments, sessionFinal);
         // 끝나자마자 바로 재시작하면 마이크 버퍼가 덜 정리된 채로 겹쳐서, 같은 말이
         // 여러 번 중복 인식되는 문제가 있었다. 아주 짧게 텀을 두고 재시작한다.
         setTimeout(()=>{ if(recognizing){ try{ startSession(); }catch(e){} } }, 300);
@@ -4110,7 +4126,7 @@ function listenForVoiceAnswer(q, session){
       if(answered) return;
       if(voicePaused) return; // 일시정지 중이면 재개 시 처리
       // 이 세션이 확정한 문장을 통째로 배열에 담아둔다(끊어 말해도 앞 내용이 사라지지 않도록).
-      if(sessionFinal) finalSegments.push(sessionFinal);
+      if(sessionFinal) pushVoiceSegment(finalSegments, sessionFinal);
       // 권한 거부·마이크 없음·네트워크 문제처럼 다시 시도해도 똑같이 실패할 오류라면,
       // 무한히 재시도하지 않고 바로 정답 단계로 넘어간다(사용자에게는 이미 원인 메시지를 보여준 상태).
       if(lastErrorInfo && lastErrorInfo.fatal){
