@@ -1030,7 +1030,7 @@
        세 가지 다 파일을 건드릴 때마다 이 주석부터 확인할 것.
    [3] 엔진 수정 후에는 곧바로 배포본을 만들지 말고, 무엇을 고쳤는지 먼저 설명하고
        사용자 컨펌을 받은 뒤에만 배포본(들)을 새로 만든다. */
-const APP_VERSION = "2026.08.26_22:53";
+const APP_VERSION = "2026.08.26_23:06";
 
 /* ============ PWA 설치(앱처럼 구동) ============ */
 (function(){
@@ -2013,6 +2013,9 @@ function setupVoicePad(q){
     let recognizer = null;
     let baseText = ""; // 녹음 시작 전 입력창에 이미 있던 텍스트
     let finalSegments = []; // 인식 세션이 끝날 때마다 "그 세션이 확정한 문장"을 하나씩 통째로 담는다
+    let restartCount = 0; // 재시작할 때마다 안드로이드의 시작/종료 알림음("삑삑")이 들리므로,
+                           // 재시작이 계속 이어지면 텀을 점점 늘려서 그 소리 빈도 자체를 줄인다.
+    const nextRestartDelay = ()=> Math.min(800 + restartCount*600, 2600);
     const renderText = (sessionFinal, sessionInterim)=>{
       // 화면에 보여줄 텍스트는 매번 (기존 텍스트 + 확정된 세그먼트들 + 지금 세션의 확정/중간 결과)를
       // 처음부터 다시 조립한다. ta.value를 읽어서 그 위에 또 쌓지 않기 때문에(이전 방식의 문제),
@@ -2052,14 +2055,17 @@ function setupVoicePad(q){
         // 이 세션이 확정한 문장을 통째로 배열에 담아둔다(끊어 말해도 앞 내용이 사라지지 않도록).
         if(sessionFinal) pushVoiceSegment(finalSegments, sessionFinal);
         // 끝나자마자 바로 재시작하면 마이크 버퍼가 덜 정리된 채로 겹쳐서, 같은 말이
-        // 여러 번 중복 인식되는 문제가 있었다. 아주 짧게 텀을 두고 재시작한다.
-        setTimeout(()=>{ if(recognizing){ try{ startSession(); }catch(e){} } }, 800);
+        // 여러 번 중복 인식되는 문제가 있었다. 재시작 텀을 두고, 재시작이 반복될수록
+        // 그 텀을 점점 늘려서(안드로이드 알림음이 너무 잦지 않도록) 재시작 자체를 줄인다.
+        restartCount++;
+        setTimeout(()=>{ if(recognizing){ try{ startSession(); }catch(e){} } }, nextRestartDelay());
       };
       recognizer.start();
     };
     const startRec = ()=>{
       baseText = ta.value || "";
       finalSegments = [];
+      restartCount = 0;
       startSession();
       recognizing = true;
       recBtn.classList.add("recording");
@@ -4059,6 +4065,8 @@ function listenForVoiceAnswer(q, session){
   voiceStudyAutoListening = true; // 수동 녹음 버튼과 동시에 두 개의 인식기가 뜨는 것을 막기 위한 표시
   let gotSpeech = false;
   let answered = false; // revealAndSpeakVoiceAnswer 중복 호출 방지
+  let restartCount = 0; // 재시작마다 안드로이드 알림음("삑삑")이 들리므로, 반복될수록 텀을 늘려서 빈도를 줄인다.
+  const nextRestartDelay = ()=> Math.min(800 + restartCount*600, 2600);
   const ta = document.getElementById("voicePadTextarea");
   const baseText = ta ? (ta.value || "") : "";
   let finalSegments = []; // 인식 세션이 끝날 때마다 "그 세션이 확정한 문장"을 하나씩 통째로 담는다
@@ -4097,32 +4105,37 @@ function listenForVoiceAnswer(q, session){
   let noSpeechTimer = null;   // 아직 한마디도 안 한 상태에서 "이 시간까지 말 안 하면 넘어간다"
   let silenceTimer = null;    // 말을 시작한 뒤 "이만큼 조용하면 말이 끝난 것으로 보고 넘어간다"
   let safetyTimer = null;
+  let nextDeadline = 0; // 다음으로 proceedToAnswer가 예정된 시각(ms) — 재시작 필요 여부 판단용
   const armTimers = ()=>{
     // 마이크가 실제로 켜진 순간(recognizer.onstart)부터 타이머를 시작한다.
     // 그 전(마이크 권한 확인·초기화하는 짧은 시간)까지 대기시간에 포함시키면
     // 실제로 말할 수 있는 시간이 그만큼 줄어들어 답변을 자꾸 놓치게 된다.
     if(noSpeechTimer) clearTimeout(noSpeechTimer);
+    const ms = voiceStudyListenMs();
+    nextDeadline = Date.now() + ms;
     noSpeechTimer = setTimeout(()=>{
       noSpeechTimer = null;
       if(!gotSpeech) proceedToAnswer(); // 아직 한마디도 안 했으면 여기서 바로 정답으로 진행
-    }, voiceStudyListenMs());
+    }, ms);
     // 만에 하나 음성인식 이벤트가 하나도 안 들어오는 등 예외적인 상황에서도 흐름이 멈추지 않도록
     // 최대 대기시간(듣기 + 답변후 대기 + 여유 30초)이 지나면 무조건 정답 단계로 진행시키는 안전장치.
     // (말을 길게 이어가는 경우까지 감안해 여유를 넉넉히 둠)
     if(safetyTimer) clearTimeout(safetyTimer);
     safetyTimer = setTimeout(()=>{
       proceedToAnswer();
-    }, voiceStudyListenMs() + voiceStudyPostAnswerGapMs() + 30000);
+    }, ms + voiceStudyPostAnswerGapMs() + 30000);
   };
   // 말이 감지된 뒤, "이만큼 조용하면 말이 끝난 것"으로 보고 다음 단계로 넘어간다.
   // 말하는 도중 잠깐 쉬어도(문장 사이 숨 고르기 등) 여기서 다시 타이머를 새로 걸기 때문에
   // 말이 끝나기 전에 잘려서 넘어가는 일이 없다.
   const armSilenceTimer = ()=>{
     if(silenceTimer) clearTimeout(silenceTimer);
+    const ms = voiceStudyPostAnswerGapMs();
+    nextDeadline = Date.now() + ms;
     silenceTimer = setTimeout(()=>{
       silenceTimer = null;
       proceedToAnswer();
-    }, voiceStudyPostAnswerGapMs());
+    }, ms);
   };
   // 혹시 onstart가 지원되지 않는 브라우저를 대비해, 즉시 한 번 타이머를 걸어둔다.
   // (onstart가 정상적으로 뜨는 브라우저에서는 armTimers()가 다시 호출되며 시간을 리셋함)
@@ -4178,12 +4191,19 @@ function listenForVoiceAnswer(q, session){
       // 말을 이미 시작했든 안 했든, 여기서 곧바로 "끝났다"고 단정 짓지 않고
       // 항상 새 인식 세션을 이어서 시작해 계속 듣는다. 실제로 넘어갈지 말지는
       // armTimers()/armSilenceTimer()가 관리하는 타이머들이 결정한다.
-      // 끝나자마자 바로 재시작하면 마이크 버퍼가 덜 정리된 채로 겹쳐서, 같은 말이
-      // 여러 번 중복 인식되는 문제가 있었다. 아주 짧게 텀을 두고 재시작한다.
+      // 다만 재시작마다 안드로이드 시작/종료 알림음("삑삑")이 들리므로:
+      // ① 대기시간이 곧(1.2초 이내) 끝날 예정이면 굳이 재시작하지 않고 그냥 그 타이머가 끝나게 둔다.
+      // ② 재시작이 반복될수록 텀을 점점 늘려서(백오프) 알림음 빈도 자체를 줄인다.
+      restartCount++;
+      const remain = nextDeadline - Date.now();
+      if(remain < 1200){
+        // 곧 어차피 다음 단계로 넘어갈 시점이라, 재시작하지 않고 기존 타이머에 맡긴다.
+        return;
+      }
       setTimeout(()=>{
         if(session !== voiceSessionToken || answered || voicePaused) return;
         try{ startSession(); }catch(e){ proceedToAnswer(); }
-      }, 800);
+      }, nextRestartDelay());
     };
     try{ recognizer.start(); }catch(e){
       proceedToAnswer();
